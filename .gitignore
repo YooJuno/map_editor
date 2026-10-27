@@ -1,5 +1,7 @@
 /build*/
 /dist/
+/packages/
+__pycache__/
 /.cache/
 .mapwright-backups/
 *.user

@@ -9,7 +9,7 @@
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
-    QCoreApplication::setOrganizationName("Mapwright"); QCoreApplication::setApplicationName("Mapwright"); QCoreApplication::setApplicationVersion("1.1.0");
+    QCoreApplication::setOrganizationName("Mapwright"); QCoreApplication::setApplicationName("Mapwright"); QCoreApplication::setApplicationVersion(MAPWRIGHT_VERSION);
     QGuiApplication::setApplicationDisplayName("Map Editor");
     app.setStyle("Fusion");
     app.setPalette(app.style()->standardPalette());

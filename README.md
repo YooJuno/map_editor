@@ -129,10 +129,39 @@ yaml-cpp 0.8 이상이 설치되어 있지 않으면 CMake가 고정된 0.8.0 �
 
 ## 실행 패키지
 
-[GitHub Actions](https://github.com/YooJuno/map_editor/actions)에서 OS별 아티팩트를
-받고, 그 안의 `.tar.gz`도 풀어 사용합니다. 실행 권한과 Qt 심볼릭 링크를 보존하기 위한
-형식입니다. macOS 빌드는 해당 러너 아키텍처용이며 universal binary는 아닙니다.
-배포 서명과 notarization은 포함하지 않습니다.
+[Releases](https://github.com/YooJuno/map_editor/releases/latest)에서 OS에 맞는 파일을
+내려받아 압축을 풀어 사용합니다. Qt 라이브러리와 예제 지도를 포함합니다.
+
+| 환경 | 배포 파일 | 실행 |
+| --- | --- | --- |
+| Windows x64 | `MapEditor-버전-windows-x86_64.zip` | `bin/mapwright.exe` |
+| Ubuntu 24.04 x64 | `MapEditor-버전-ubuntu-24.04-x86_64.tar.gz` | `./MapEditor.sh` |
+| Apple Silicon Mac | `MapEditor-버전-macos-arm64.tar.gz` | `mapwright.app` |
+| Intel Mac | `MapEditor-버전-macos-x86_64.tar.gz` | `mapwright.app` |
+
+Linux/macOS의 `.tar.gz`는 실행 권한과 Qt 링크를 보존합니다. `SHA256SUMS`에서 다운로드한
+파일의 SHA-256 값을 확인할 수 있습니다. 배포 서명과 macOS notarization은 포함하지 않습니다.
+
+## 자동 빌드·배포
+
+`main`에 푸시하거나 PR을 열면 네 환경에서 빌드·테스트·패키징합니다.
+버전 태그를 푸시하면 모두 성공한 뒤 GitHub Release를 자동으로 게시합니다.
+직접 저장하는 토큰 없이 Actions의 `GITHUB_TOKEN`을 사용합니다.
+
+새 버전을 배포할 때는 `CMakeLists.txt`의 `project(... VERSION ...)`을 바꾸고 커밋한 뒤:
+
+```bash
+git push origin main
+git tag -a v1.2.0 -m "Map Editor 1.2.0"
+git push origin v1.2.0
+```
+
+태그와 앱 버전이 다르면 배포하지 않습니다. 실패한 실행은 Actions에서 다시 실행할 수 있고,
+이미 완성된 Release를 다시 실행하면 기존 배포 파일을 덮어쓰지 않습니다.
+태그 없이 실행한 빌드는 [Actions](https://github.com/YooJuno/map_editor/actions)의 아티팩트로
+확인할 수 있습니다. Actions에서 직접 실행하려면 `Build, test and release`를 선택하세요.
+
+## 직접 실행 패키지 만들기
 
 직접 Qt 런타임을 묶으려면 Qt 6.7 이상에서:
 

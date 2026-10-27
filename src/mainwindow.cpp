@@ -347,7 +347,7 @@ void MainWindow::makeActions() {
         QMessageBox::information(this, "단축키", "B  펜\nE  지우개\nL  직선\nR  사각형\nG  채우기\nH  이동\nI  스포이드\n\n1 / 2 / 3  흰색 / 검정 / 회색\n[ / ]  굵기 조절\nF  화면 맞춤\n0  100%\nEsc  그리는 중인 획 취소\n\n휠  확대·축소\n가운데 버튼 또는 Space+드래그  이동\n\nCtrl (macOS Cmd)+O  열기\nCtrl/Cmd+S  저장\nCtrl/Cmd+Shift+S  다른 이름으로 저장\nCtrl/Cmd+Z  실행 취소\nCtrl/Cmd+Shift+Z  다시 실행");
     });
     help->addAction("정보", this, [this] {
-        QMessageBox::about(this, "Map Editor", "<b>Map Editor 1.1</b><p>PGM / YAML 지도 편집기</p><p>Qt 6 · MIT License</p>");
+        QMessageBox::about(this, "Map Editor", QString("<b>Map Editor %1</b><p>PGM / YAML 지도 편집기</p><p>Qt 6 · MIT License</p>").arg(MAPWRIGHT_VERSION));
     });
 
     auto canvasKey = [this](const QString &key, auto callback) {

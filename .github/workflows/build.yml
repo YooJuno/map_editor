@@ -1,25 +1,56 @@
-name: Build and test desktop apps
+name: Build, test and release
+
 on:
   push:
+    branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Read version and validate release tag
+        id: version
+        run: python3 scripts/release_version.py
+      - name: Test package format and release version checks
+        run: python3 -m unittest discover -s tests -p test_packaging.py -v
+
   desktop:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
-            artifact: Mapwright-Ubuntu
+            platform: ubuntu-24.04-x86_64
+            cmake_args: ''
           - os: windows-2022
-            artifact: Mapwright-Windows
+            platform: windows-x86_64
+            cmake_args: ''
           - os: macos-14
-            artifact: Mapwright-macOS
+            platform: macos-arm64
+            cmake_args: '-DCMAKE_OSX_ARCHITECTURES=arm64'
+          - os: macos-15-intel
+            platform: macos-x86_64
+            cmake_args: '-DCMAKE_OSX_ARCHITECTURES=x86_64'
     runs-on: ${{ matrix.os }}
+    env:
+      MAPEDITOR_VERSION: ${{ needs.version.outputs.version }}
+      MAPEDITOR_PLATFORM: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Configure Windows compiler
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
@@ -32,7 +63,7 @@ jobs:
           version: '6.8.3'
           cache: true
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DMAPWRIGHT_DEPLOY_RUNTIME=ON
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DMAPWRIGHT_DEPLOY_RUNTIME=ON ${{ matrix.cmake_args }}
       - name: Build
         run: cmake --build build --parallel 3
       - name: Test
@@ -46,11 +77,73 @@ jobs:
           cp -R licenses/. dist/share/mapwright/licenses/
           if [ -d "$QT_ROOT_DIR/LICENSES" ]; then cp -R "$QT_ROOT_DIR/LICENSES" dist/share/mapwright/licenses/Qt; fi
           if [ -d "$QT_ROOT_DIR/../../Licenses" ]; then cp -R "$QT_ROOT_DIR/../../Licenses" dist/share/mapwright/licenses/Qt-SDK; fi
-      - name: Archive bundle with executable permissions and symlinks
+      - name: Package native application
         shell: bash
-        run: tar -czf "${{ matrix.artifact }}.tar.gz" -C dist .
-      - name: Upload native bundle
-        uses: actions/upload-artifact@v4
+        run: python scripts/package.py --version "$MAPEDITOR_VERSION" --platform "$MAPEDITOR_PLATFORM"
+      - name: Upload package
+        uses: actions/upload-artifact@v7.0.2
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          name: package-${{ matrix.platform }}
+          path: packages/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [version, desktop]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      MAPEDITOR_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Download successful build packages
+        uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: package-*
+          path: packages
+          merge-multiple: true
+      - name: Create checksums and publish
+        working-directory: packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          archives=(MapEditor-*.zip MapEditor-*.tar.gz)
+          if [ "${#archives[@]}" -ne 4 ]; then
+            echo "Expected all four platform packages before publishing." >&2
+            exit 1
+          fi
+          sha256sum "${archives[@]}" > SHA256SUMS
+          notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes" <<EOF
+          Assets에서 사용하는 운영체제에 맞는 파일을 내려받아 압축을 풀어 실행하세요.
+
+          | 환경 | 파일 | 실행 |
+          | --- | --- | --- |
+          | Windows x64 | MapEditor-${MAPEDITOR_VERSION}-windows-x86_64.zip | bin/mapwright.exe |
+          | Ubuntu 24.04 x64 | MapEditor-${MAPEDITOR_VERSION}-ubuntu-24.04-x86_64.tar.gz | ./MapEditor.sh |
+          | Apple Silicon Mac | MapEditor-${MAPEDITOR_VERSION}-macos-arm64.tar.gz | mapwright.app |
+          | Intel Mac | MapEditor-${MAPEDITOR_VERSION}-macos-x86_64.tar.gz | mapwright.app |
+
+          Qt 라이브러리와 예제 지도를 포함합니다. 배포 서명과 macOS notarization은 포함하지 않습니다.
+          파일 검증용 SHA-256 값은 SHA256SUMS에 있습니다.
+          EOF
+          state="$RUNNER_TEMP/existing-release.json"
+          if gh release view "$RELEASE_TAG" --json isDraft,assets > "$state" 2>/dev/null; then
+            if jq -e '.isDraft' "$state" > /dev/null; then
+              gh release upload "$RELEASE_TAG" "${archives[@]}" SHA256SUMS --clobber
+              gh release edit "$RELEASE_TAG" --draft=false --notes-file "$notes"
+            else
+              for asset in "${archives[@]}" SHA256SUMS; do
+                jq -e --arg name "$asset" '.assets | any(.name == $name)' "$state" > /dev/null
+              done
+              echo "Release already published with all expected assets."
+            fi
+          else
+            gh release create "$RELEASE_TAG" "${archives[@]}" SHA256SUMS \
+              --verify-tag --title "Map Editor $RELEASE_TAG" --notes-file "$notes" --generate-notes
+          fi
