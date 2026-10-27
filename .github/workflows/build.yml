@@ -1,0 +1,53 @@
+name: Build and test desktop apps
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            artifact: Mapwright-Ubuntu
+          - os: windows-2022
+            artifact: Mapwright-Windows
+          - os: macos-14
+            artifact: Mapwright-macOS
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Windows compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libxkbcommon-x11-0
+      - name: Install Qt SDK
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          cache: true
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DMAPWRIGHT_DEPLOY_RUNTIME=ON
+      - name: Build
+        run: cmake --build build --parallel 3
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 60
+      - name: Collect runtime
+        run: cmake --install build --prefix dist
+      - name: Preserve SDK licenses
+        shell: bash
+        run: |
+          mkdir -p dist/share/mapwright/licenses
+          cp -R licenses/. dist/share/mapwright/licenses/
+          if [ -d "$QT_ROOT_DIR/LICENSES" ]; then cp -R "$QT_ROOT_DIR/LICENSES" dist/share/mapwright/licenses/Qt; fi
+          if [ -d "$QT_ROOT_DIR/../../Licenses" ]; then cp -R "$QT_ROOT_DIR/../../Licenses" dist/share/mapwright/licenses/Qt-SDK; fi
+      - name: Upload native bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/

@@ -1,0 +1,7 @@
+/build*/
+/dist/
+/.cache/
+.mapwright-backups/
+*.user
+.DS_Store
+Thumbs.db

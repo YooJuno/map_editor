@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Mapwright
+Comment=PGM and YAML occupancy map editor
+Exec=mapwright %f
+Icon=mapwright
+Terminal=false
+Categories=Graphics;Engineering;
+MimeType=image/x-portable-graymap;
