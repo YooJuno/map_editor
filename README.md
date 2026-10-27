@@ -183,6 +183,8 @@ Qt 6.4 환경에서는 런타임 수집 옵션을 끄고 시스템 Qt 패키지�
 `.github/workflows/build.yml`은 Ubuntu 24.04 / Windows 2022 / macOS 14에서
 빌드·테스트 후 실행 번들을 아티팩트로 올리도록 구성했습니다. 푸시와 PR에서 자동 실행되며,
 저장소의 [Actions](https://github.com/YooJuno/map_editor/actions)에서도 직접 실행할 수 있습니다.
+OS별 아티팩트 안의 `.tar.gz`를 풀어 실행합니다. 이 압축 형식으로 Linux/macOS 실행 권한과
+Qt 프레임워크의 심볼릭 링크를 보존합니다.
 배포 서명·macOS notarization·설치 프로그램은 포함하지 않았습니다.
 
 ## 단축키

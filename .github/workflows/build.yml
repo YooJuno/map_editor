@@ -46,8 +46,11 @@ jobs:
           cp -R licenses/. dist/share/mapwright/licenses/
           if [ -d "$QT_ROOT_DIR/LICENSES" ]; then cp -R "$QT_ROOT_DIR/LICENSES" dist/share/mapwright/licenses/Qt; fi
           if [ -d "$QT_ROOT_DIR/../../Licenses" ]; then cp -R "$QT_ROOT_DIR/../../Licenses" dist/share/mapwright/licenses/Qt-SDK; fi
+      - name: Archive bundle with executable permissions and symlinks
+        shell: bash
+        run: tar -czf "${{ matrix.artifact }}.tar.gz" -C dist .
       - name: Upload native bundle
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist/
+          path: ${{ matrix.artifact }}.tar.gz
