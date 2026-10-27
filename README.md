@@ -170,10 +170,12 @@ Qt 6.7 이상 SDK에서 아래 명령으로 Qt 공유 라이브러리와 플러�
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMAPWRIGHT_DEPLOY_RUNTIME=ON
 cmake --build build --parallel
-cmake --install build --prefix dist
+cmake --install build --prefix "$PWD/dist"
 ```
 
 Windows: `dist/bin/mapwright.exe`, macOS: `dist/mapwright.app`, Linux: `dist/bin/mapwright`.
+Qt의 배포 도구에는 **절대 경로**를 전달하세요. Windows 명령 프롬프트에서는
+`cmake --install build --prefix "%CD%/dist"`를 사용합니다.
 Linux 패키지는 빌드한 배포판과 glibc / 시스템 GUI 라이브러리가 호환되어야 합니다.
 Qt 6.4 환경에서는 런타임 수집 옵션을 끄고 시스템 Qt 패키지로 실행할 수 있습니다.
 설치 대상 컴퓨터에 개발용 SDK가 필요 없는 번들을 만들 수 있지만 Qt 런타임 크기는 포함됩니다.

@@ -38,7 +38,7 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure --timeout 60
       - name: Collect runtime
-        run: cmake --install build --prefix dist
+        run: cmake --install build --prefix "${{ github.workspace }}/dist"
       - name: Preserve SDK licenses
         shell: bash
         run: |
