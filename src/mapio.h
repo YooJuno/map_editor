@@ -26,13 +26,13 @@ struct SaveResult {
     QString yamlPath, imagePath, backupDirectory;
 };
 // Throws std::runtime_error with a user-readable diagnostic.
-QString validate(const Metadata &meta);
+QString validate(const Metadata &meta, bool allowRaw = false);
 bool sameFilePath(const QString &first, const QString &second);
 QImage readPgm(const QString &path);
 QByteArray encodePgm(const QImage &image);
-Map load(const QString &path);
-QByteArray encodeYaml(const Map &map, const QString &relativeImage);
-SaveResult savePair(const Map &map, const QString &yamlPath, const QString &imagePath = {});
+Map load(const QString &path, bool allowRaw = false);
+QByteArray encodeYaml(const Map &map, const QString &relativeImage, bool allowRaw = false);
+SaveResult savePair(const Map &map, const QString &yamlPath, const QString &imagePath = {}, bool allowRaw = false);
 double probability(int gray, const Metadata &meta);
 int unknownGray(const Metadata &meta);
 QImage trinary(const QImage &image, const Metadata &meta);

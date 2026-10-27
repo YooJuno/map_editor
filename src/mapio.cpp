@@ -95,10 +95,11 @@ bool sameFilePath(const QString &first, const QString &second) { return samePath
 bool Metadata::operator==(const Metadata &b) const {
     return resolution == b.resolution && x == b.x && y == b.y && yaw == b.yaw && negate == b.negate && occupied == b.occupied && free == b.free && mode == b.mode;
 }
-QString validate(const Metadata &m) {
+QString validate(const Metadata &m, bool allowRaw) {
     if (!std::isfinite(m.resolution) || m.resolution <= 0) return "resolution은 0보다 큰 유한한 값이어야 합니다.";
     if (!std::isfinite(m.x) || !std::isfinite(m.y) || !std::isfinite(m.yaw)) return "origin 값은 유한한 숫자여야 합니다.";
     if (m.negate != 0 && m.negate != 1) return "negate는 0 또는 1이어야 합니다.";
+    if (allowRaw && m.mode == "raw") return {};
     if (!std::isfinite(m.free) || !std::isfinite(m.occupied) || m.free <= 0 || m.occupied >= 1 || m.free >= m.occupied)
         return "임계값은 0 < free_thresh < occupied_thresh < 1이어야 합니다.";
     bool hasUnknown = false;
@@ -107,7 +108,7 @@ QString validate(const Metadata &m) {
         if (p >= m.free && p <= m.occupied) { hasUnknown = true; break; }
     }
     if (!hasUnknown) return "두 임계값 사이에 회색 픽셀을 표현할 공간이 없습니다. 간격을 넓히세요.";
-    if (m.mode != "trinary") return "이 에디터는 3색 trinary 지도만 지원합니다. scale/raw 지도는 변환 후 열어 주세요.";
+    if (m.mode != "trinary" && !(allowRaw && m.mode == "raw")) return "원본 지도는 trinary 모드만 지원합니다. raw 마스크는 원본 지도를 연 뒤 '마스크 열기'를 사용하세요.";
     return {};
 }
 QImage readPgm(const QString &path) {
@@ -151,7 +152,7 @@ QByteArray encodePgm(const QImage &image) {
     for (int y = 0; y < image.height(); ++y) data.append(reinterpret_cast<const char *>(image.constScanLine(y)), image.width());
     return data;
 }
-Map load(const QString &path) {
+Map load(const QString &path, bool allowRaw) {
     Map map;
     QString yamlPath;
     const QFileInfo info(path);
@@ -190,7 +191,7 @@ Map load(const QString &path) {
         else if (neg == "false" || neg == "False" || neg == "FALSE") map.meta.negate = 0;
         else map.meta.negate = root["negate"].as<int>();
         if (root["mode"]) map.meta.mode = QString::fromStdString(root["mode"].as<std::string>());
-        const auto error = validate(map.meta);
+        const auto error = validate(map.meta, allowRaw);
         if (!error.isEmpty()) fail(error);
         map.image = readPgm(map.imagePath);
         map.yamlPath = yamlPath;
@@ -198,8 +199,8 @@ Map load(const QString &path) {
     } catch (const YAML::Exception &e) { fail(QString("YAML 형식 오류: %1").arg(QString::fromUtf8(e.what()))); }
     return map;
 }
-QByteArray encodeYaml(const Map &map, const QString &relativeImage) {
-    const auto error = validate(map.meta);
+QByteArray encodeYaml(const Map &map, const QString &relativeImage, bool allowRaw) {
+    const auto error = validate(map.meta, allowRaw);
     if (!error.isEmpty()) fail(error);
     auto root = map.extra.IsMap() ? YAML::Clone(map.extra) : YAML::Node(YAML::NodeType::Map);
     root["image"] = relativeImage.toUtf8().toStdString();
@@ -209,14 +210,14 @@ QByteArray encodeYaml(const Map &map, const QString &relativeImage) {
     origin.SetStyle(YAML::EmitterStyle::Flow);
     root["origin"] = origin;
     root["negate"] = map.meta.negate; root["free_thresh"] = map.meta.free; root["occupied_thresh"] = map.meta.occupied;
-    root["mode"] = "trinary";
+    root["mode"] = map.meta.mode.toStdString();
     YAML::Emitter out;
     out.SetDoublePrecision(std::numeric_limits<double>::max_digits10);
     out << root;
     if (!out.good()) fail("YAML 직렬화 실패");
     return QByteArray(out.c_str()) + "\n";
 }
-SaveResult savePair(const Map &map, const QString &yamlFile, const QString &imageFile) {
+SaveResult savePair(const Map &map, const QString &yamlFile, const QString &imageFile, bool allowRaw) {
     const auto yamlPath = absolute(yamlFile);
     const QFileInfo yamlInfo(yamlPath);
     const auto suffix = yamlInfo.suffix().toLower();
@@ -224,7 +225,7 @@ SaveResult savePair(const Map &map, const QString &yamlFile, const QString &imag
     const auto imagePath = imageFile.isEmpty() ? yamlInfo.dir().filePath(yamlInfo.completeBaseName() + ".pgm") : absolute(imageFile);
     if (QFileInfo(imagePath).suffix().compare("pgm", Qt::CaseInsensitive) != 0 || samePath(yamlPath, imagePath)) fail("PGM과 YAML은 서로 다른 경로여야 합니다.");
     const auto pgmBytes = encodePgm(map.image);
-    const auto yamlBytes = encodeYaml(map, QDir::fromNativeSeparators(yamlInfo.dir().relativeFilePath(imagePath)));
+    const auto yamlBytes = encodeYaml(map, QDir::fromNativeSeparators(yamlInfo.dir().relativeFilePath(imagePath)), allowRaw);
     preflight(yamlPath); preflight(imagePath);
     // Prepare both files before touching either target.
     QSaveFile pgm(imagePath), yaml(yamlPath);

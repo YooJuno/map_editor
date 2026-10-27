@@ -19,9 +19,15 @@ int main(int argc, char **argv) {
     }
     QFile style(":/style.qss"); if (style.open(QIODevice::ReadOnly)) app.setStyleSheet(QString::fromUtf8(style.readAll()));
     QCommandLineParser parser; parser.setApplicationDescription("PGM + YAML occupancy map editor"); parser.addHelpOption(); parser.addVersionOption(); parser.addPositionalArgument("map", "PGM or YAML map file", "[map]");
-    parser.addOption({"screenshot", "Save a UI screenshot and exit (for local QA).", "path"}); parser.process(app);
+    parser.addOption({"screenshot", "Save a UI screenshot and exit (for local QA).", "path"});
+    parser.addOption({"keepout", "Open a keepout mask over the reference map.", "yaml"});
+    parser.addOption({"speed-mask", "Open a percentage speed mask over the reference map.", "yaml"});
+    parser.process(app);
+    if ((parser.isSet("keepout") || parser.isSet("speed-mask")) && parser.positionalArguments().isEmpty()) parser.showHelp(1);
     MainWindow window; window.show();
     if (!parser.positionalArguments().isEmpty()) window.openPath(parser.positionalArguments().first());
+    if (parser.isSet("keepout")) window.openMaskPath(parser.value("keepout"), Mask::Keepout);
+    if (parser.isSet("speed-mask")) window.openMaskPath(parser.value("speed-mask"), Mask::SpeedPercent);
     if (parser.isSet("screenshot")) QTimer::singleShot(500, &app, [&] {
         window.canvas()->fit();
         if (!window.grab().save(parser.value("screenshot"))) { std::fprintf(stderr, "Screenshot failed\n"); app.exit(1); }

@@ -11,6 +11,7 @@
 #include <QWheelEvent>
 #include <cmath>
 #include <vector>
+#include <algorithm>
 
 namespace Raster {
 namespace {
@@ -91,24 +92,61 @@ void flood(QImage &im, QPoint start, int gray) {
         }
     }
 }
+void polygon(QImage &im, const QPolygonF &points, int gray) {
+    if (points.size() < 3) return;
+    const auto bounds = points.boundingRect();
+    const int top = qMax(0, int(std::floor(bounds.top()))), bottom = qMin(im.height() - 1, int(std::ceil(bounds.bottom())));
+    for (int y = top; y <= bottom; ++y) {
+        const double scan = y + .5;
+        std::vector<double> intersections;
+        for (qsizetype i = 0; i < points.size(); ++i) {
+            const auto &a = points[i], &b = points[(i + 1) % points.size()];
+            if ((a.y() > scan) != (b.y() > scan))
+                intersections.push_back(a.x() + (scan - a.y()) * (b.x() - a.x()) / (b.y() - a.y()));
+        }
+        std::sort(intersections.begin(), intersections.end());
+        auto *row = im.scanLine(y);
+        for (size_t i = 0; i + 1 < intersections.size(); i += 2) {
+            const int left = qMax(0, int(std::ceil(intersections[i] - .5)));
+            const int right = qMin(im.width() - 1, int(std::ceil(intersections[i + 1] - .5)) - 1);
+            if (left <= right) std::fill(row + left, row + right + 1, uchar(gray));
+        }
+    }
 }
-Canvas::Canvas(Document *doc, QWidget *parent) : QWidget(parent), doc_(doc) {
+}
+Canvas::Canvas(Document *doc, QWidget *parent) : QWidget(parent), doc_(doc), base_(doc) {
     setObjectName("mapCanvas"); setMinimumSize(300, 300); setMouseTracking(true); setFocusPolicy(Qt::StrongFocus); setAcceptDrops(true);
     connect(doc, &Document::loaded, this, [this] { cancelStroke(); fit(); });
     connect(doc, &Document::changed, this, qOverload<>(&Canvas::update));
 }
-void Canvas::setTool(Tool tool) { finishStroke(); tool_ = tool; setCursor(tool == Hand ? Qt::OpenHandCursor : Qt::CrossCursor); update(); }
+void Canvas::setTool(Tool tool) { finishEditing(); tool_ = tool; setCursor(tool == Hand ? Qt::OpenHandCursor : Qt::CrossCursor); update(); }
+void Canvas::setDocument(Document *document) { finishEditing(); doc_ = document ? document : base_; update(); }
+void Canvas::setMaskLayers(Document *keepout, Document *speed) {
+    keepout_ = keepout; speed_ = speed;
+    for (auto *layer : {keepout, speed}) if (layer) connect(layer, &Document::changed, this, qOverload<>(&Canvas::update));
+}
+bool Canvas::editableVisible() const {
+    return (doc_ == base_ || maskOpacity_ > 0) && (doc_ != keepout_ || showKeepout_) && (doc_ != speed_ || showSpeed_);
+}
+void Canvas::finishEditing() { if (tool_ == Polygon && drawing_) finishPolygon(); else finishStroke(); }
+bool Canvas::undoPolygonPoint() {
+    if (tool_ != Polygon || !drawing_ || polygon_.isEmpty()) return false;
+    polygon_.removeLast();
+    if (polygon_.isEmpty()) cancelStroke();
+    else { draft_ = doc_->image().copy(); update(); }
+    return true;
+}
 void Canvas::fit() {
-    if (doc_->empty()) return;
+    if (base_->empty()) return;
     fitted_ = true;
-    scale_ = qBound(0.005, qMin((width() - 96.) / doc_->image().width(), (height() - 96.) / doc_->image().height()), 64.);
-    offset_ = QPointF((width() - doc_->image().width() * scale_) / 2, (height() - doc_->image().height() * scale_) / 2);
+    scale_ = qBound(0.005, qMin((width() - 96.) / base_->image().width(), (height() - 96.) / base_->image().height()), 64.);
+    offset_ = QPointF((width() - base_->image().width() * scale_) / 2, (height() - base_->image().height() * scale_) / 2);
     emit zoomChanged(scale_); update();
 }
-void Canvas::actualSize() { if (!doc_->empty()) zoomAt(1. / scale_, QPointF(width() / 2., height() / 2.)); }
+void Canvas::actualSize() { if (!base_->empty()) zoomAt(1. / scale_, QPointF(width() / 2., height() / 2.)); }
 void Canvas::zoom(double factor) { zoomAt(factor, QPointF(width() / 2., height() / 2.)); }
 void Canvas::zoomAt(double factor, QPointF anchor) {
-    if (doc_->empty()) return;
+    if (base_->empty()) return;
     const auto pixel = mapPoint(anchor);
     fitted_ = false;
     scale_ = qBound(0.005, scale_ * factor, 64.);
@@ -118,16 +156,29 @@ void Canvas::zoomAt(double factor, QPointF anchor) {
 void Canvas::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.fillRect(rect(), QColor("#55585c"));
-    if (doc_->empty()) {
+    if (base_->empty()) {
         p.setPen(QColor("#e1e2e4"));
         p.drawText(rect(), Qt::AlignCenter, QString("PGM / YAML 열기  ·  %1\n파일을 여기에 끌어 놓을 수도 있습니다.")
             .arg(QKeySequence(QKeySequence::Open).toString(QKeySequence::NativeText)));
         return;
     }
-    const auto &image = drawing_ ? draft_ : doc_->image();
+    const auto &image = drawing_ && doc_ == base_ ? draft_ : base_->image();
     const QRectF target(offset_, QSizeF(image.size()) * scale_);
     p.setRenderHint(QPainter::SmoothPixmapTransform, false);
     p.drawImage(target, image);
+    auto overlay = [&](Document *layer, bool visible, bool speed) {
+        if (!layer || layer->empty() || !visible || layer->image().size() != image.size()) return;
+        const auto &mask = drawing_ && doc_ == layer ? draft_ : layer->image();
+        QImage indexed(mask.constBits(), mask.width(), mask.height(), mask.bytesPerLine(), QImage::Format_Indexed8);
+        QList<QRgb> palette(256, qRgba(0, 0, 0, 0));
+        for (int i = 1; i <= 100; ++i)
+            palette[i] = speed ? qRgba(20 + i, 75 + i, 205 + i / 2, 255) : qRgba(225, 45, 40, 255);
+        palette[255] = qRgba(80, 80, 80, 90);
+        indexed.setColorTable(palette);
+        p.save(); p.setOpacity(maskOpacity_); p.drawImage(target, indexed); p.restore();
+    };
+    overlay(speed_, showSpeed_, true);
+    overlay(keepout_, showKeepout_, false);
     p.setPen(QColor("#2e3033")); p.drawRect(target);
     if (scale_ >= 10) {
         p.save(); p.setClipRect(target);
@@ -142,7 +193,7 @@ void Canvas::paintEvent(QPaintEvent *) {
         const auto origin = screenPoint(QPointF(0, image.height()));
         if (rect().adjusted(-80, -80, 80, 80).contains(origin.toPoint())) {
             p.setRenderHint(QPainter::Antialiasing, true);
-            const double yaw = doc_->meta().yaw, len = 52;
+            const double yaw = base_->meta().yaw, len = 52;
             auto arrow = [&](QPointF end, const QColor &color, const QString &label) {
                 p.setPen(QPen(color, 2)); p.drawLine(origin, end); p.setBrush(color); p.drawEllipse(end, 3, 3); p.drawText(end + QPointF(5, -5), label);
             };
@@ -150,6 +201,17 @@ void Canvas::paintEvent(QPaintEvent *) {
             arrow(origin + QPointF(std::sin(yaw), -std::cos(yaw)) * len, QColor("#24865f"), "Y");
             p.setPen(QPen(QColor("#176b50"), 2)); p.setBrush(Qt::white); p.drawEllipse(origin, 4, 4);
         }
+    }
+    if (tool_ == Polygon && drawing_ && !polygon_.isEmpty()) {
+        p.save(); p.translate(offset_); p.scale(scale_, scale_);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(QColor("#f5a623"), 1.5 / scale_));
+        p.setBrush(Qt::NoBrush); p.drawPolyline(polygon_);
+        p.drawLine(polygon_.last(), polygonHover_);
+        p.drawLine(polygonHover_, polygon_.first());
+        p.setBrush(QColor("#ffffff"));
+        for (const auto &point : polygon_) p.drawEllipse(point, 3. / scale_, 3. / scale_);
+        p.restore();
     }
     if (inside_ && !panning_ && (tool_ == Pen || tool_ == Eraser) && insideImage(mouse_)) {
         p.setRenderHint(QPainter::Antialiasing, true);
@@ -162,7 +224,7 @@ void Canvas::paintEvent(QPaintEvent *) {
 }
 void Canvas::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
-    if (doc_->empty()) return;
+    if (base_->empty()) return;
     if (fitted_) fit();
     else if (e->oldSize().isValid()) {
         offset_ += QPointF((e->size().width() - e->oldSize().width()) / 2., (e->size().height() - e->oldSize().height()) / 2.);
@@ -177,10 +239,10 @@ bool Canvas::insideImage(QPointF position) const {
     // Compare viewport edges first: the inverse transform can round an exact
     // right/bottom edge slightly inward at fractional zoom levels.
     if (position.x() < offset_.x() || position.y() < offset_.y() ||
-        position.x() >= offset_.x() + doc_->image().width() * scale_ ||
-        position.y() >= offset_.y() + doc_->image().height() * scale_) return false;
+        position.x() >= offset_.x() + base_->image().width() * scale_ ||
+        position.y() >= offset_.y() + base_->image().height() * scale_) return false;
     const auto point = mapPoint(position);
-    return point.x() >= 0 && point.y() >= 0 && point.x() < doc_->image().width() && point.y() < doc_->image().height();
+    return point.x() >= 0 && point.y() >= 0 && point.x() < base_->image().width() && point.y() < base_->image().height();
 }
 void Canvas::mousePressEvent(QMouseEvent *e) {
     setFocus(); if (doc_->empty()) return;
@@ -188,11 +250,18 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::MiddleButton || (e->button() == Qt::LeftButton && (space_ || tool_ == Hand))) {
         panning_ = true; fitted_ = false; panStart_ = e->position(); setCursor(Qt::ClosedHandCursor); return;
     }
-    if (e->button() != Qt::LeftButton || !insideImage(e->position())) return;
+    if (e->button() != Qt::LeftButton || !insideImage(e->position()) || !editableVisible()) return;
     if (tool_ == Picker) {
         const auto point = pixelPoint(e->position());
         emit colorPicked(doc_->image().constScanLine(point.y())[point.x()]);
         return;
+    }
+    if (tool_ == Polygon) {
+        if (!drawing_) { drawing_ = true; draft_ = doc_->image().copy(); emit editingChanged(); }
+        const auto point = mapPoint(e->position());
+        if (polygon_.size() >= 3 && QLineF(screenPoint(polygon_.first()), e->position()).length() <= 7) { finishPolygon(); return; }
+        if (polygon_.isEmpty() || QLineF(polygon_.last(), point).length() > .01) polygon_ << point;
+        polygonHover_ = point; update(); return;
     }
     drawing_ = true; start_ = last_ = pixelPoint(e->position()); draft_ = doc_->image().copy();
     emit editingChanged();
@@ -205,7 +274,12 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     if (doc_->empty()) return;
     emit positionChanged(mapPoint(e->position()));
     if (panning_) { offset_ += e->position() - panStart_; panStart_ = e->position(); }
-    else if (drawing_) {
+    else if (drawing_ && tool_ == Polygon) {
+        polygonHover_ = mapPoint(e->position());
+        draft_ = doc_->image().copy();
+        auto preview = polygon_; preview << polygonHover_;
+        Raster::polygon(draft_, preview, activeGray());
+    } else if (drawing_) {
         const auto current = pixelPoint(e->position());
         if (tool_ == Pen || tool_ == Eraser) Raster::stroke(draft_, last_, current, brushSize_, activeGray());
         else {
@@ -221,18 +295,32 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     if (panning_ && (e->button() == Qt::MiddleButton || e->button() == Qt::LeftButton)) {
         panning_ = false; setCursor(tool_ == Hand || space_ ? Qt::OpenHandCursor : Qt::CrossCursor);
     }
-    if (e->button() == Qt::LeftButton && drawing_) { mouseMoveEvent(e); finishStroke(); }
+    if (e->button() == Qt::LeftButton && drawing_ && tool_ != Polygon) { mouseMoveEvent(e); finishStroke(); }
+}
+void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
+    if (tool_ == Polygon && e->button() == Qt::LeftButton && drawing_) finishPolygon();
+    else QWidget::mouseDoubleClickEvent(e);
+}
+void Canvas::finishPolygon() {
+    if (!drawing_) return;
+    if (polygon_.size() < 3) { cancelStroke(); return; }
+    draft_ = doc_->image().copy(); Raster::polygon(draft_, polygon_, activeGray());
+    finishStroke();
 }
 void Canvas::finishStroke() {
     if (!drawing_) return;
     drawing_ = false;
-    const QStringList names{"펜", "지우개", "직선", "사각형", "영역 채우기", "이동"};
-    doc_->editImage(draft_, names[int(tool_)]); draft_ = {}; emit editingChanged(); update();
+    const QStringList names{"펜", "지우개", "직선", "사각형", "영역 채우기", "이동", "스포이드", "다각형"};
+    doc_->editImage(draft_, names[int(tool_)]); draft_ = {}; polygon_.clear(); emit editingChanged(); update();
 }
-void Canvas::cancelStroke() { drawing_ = panning_ = space_ = false; draft_ = {}; emit editingChanged(); update(); }
+void Canvas::cancelStroke() { drawing_ = panning_ = space_ = false; draft_ = {}; polygon_.clear(); emit editingChanged(); update(); }
 void Canvas::wheelEvent(QWheelEvent *e) { zoomAt(std::pow(1.0015, e->angleDelta().y()), e->position()); e->accept(); }
 void Canvas::keyPressEvent(QKeyEvent *e) {
-    if (e->key() == Qt::Key_Space) { space_ = true; setCursor(Qt::OpenHandCursor); e->accept(); }
+    if (tool_ == Polygon && drawing_ && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) { finishPolygon(); e->accept(); }
+    else if (tool_ == Polygon && drawing_ && e->key() == Qt::Key_Backspace) {
+        undoPolygonPoint();
+        e->accept();
+    } else if (e->key() == Qt::Key_Space) { space_ = true; setCursor(Qt::OpenHandCursor); e->accept(); }
     else if (e->key() == Qt::Key_Escape) { cancelStroke(); e->accept(); }
     else QWidget::keyPressEvent(e);
 }
@@ -242,7 +330,7 @@ void Canvas::keyReleaseEvent(QKeyEvent *e) {
 }
 void Canvas::leaveEvent(QEvent *) { inside_ = false; update(); }
 void Canvas::focusOutEvent(QFocusEvent *e) {
-    finishStroke();
+    if (tool_ != Polygon) finishStroke();
     panning_ = space_ = false;
     setCursor(tool_ == Hand ? Qt::OpenHandCursor : Qt::CrossCursor);
     QWidget::focusOutEvent(e);

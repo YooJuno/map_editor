@@ -5,6 +5,60 @@ C++17, Qt 6 Widgets, yaml-cpp를 사용합니다. 실행할 때 ROS나 Python은
 
 ![편집 화면](docs/screenshot.png)
 
+## 필터 마스크
+
+원본 지도 위에 반투명 레이어를 겹쳐 Nav2의 진입 금지·속도 제한 마스크를 만듭니다.
+원본, 진입 금지, 속도 제한은 각각 별도의 이미지와 실행 취소 기록을 사용합니다.
+
+![필터 마스크 편집](docs/filter_masks.png)
+
+1. `원본 열기`로 지도 YAML을 엽니다.
+2. `편집 레이어`에서 `진입 금지 마스크` 또는 `속도 제한 마스크`를 고릅니다.
+   원본과 같은 크기·해상도·원점의 빈 마스크가 만들어집니다.
+3. 사각형을 드래그하거나, 다각형(P)으로 점을 찍고 Enter로 구역을 완성합니다.
+   첫 점을 다시 클릭하거나 더블클릭해도 완료됩니다. Backspace/Ctrl+Z는 찍은 점을
+   하나 취소하고, Esc는 현재 다각형을 취소합니다. 지우개는 제한을 해제합니다.
+4. 속도 제한은 그릴 구역의 속도를 1~100%로 정합니다. 30%는 로봇의 최대 속도 대비 30%입니다.
+   값을 바꿔도 이미 그린 구역은 그대로입니다. 다른 값으로 겹쳐 그리거나 지워서 수정합니다.
+5. 표시 체크박스와 불투명도 슬라이더로 원본과 비교합니다. 화면의 빨강·파랑은 표시용이고
+   저장 이미지에는 섞이지 않습니다. 숨기거나 불투명도가 0인 마스크에는 그릴 수 없습니다.
+6. `마스크 저장`은 선택한 마스크의 PGM/YAML 쌍만 저장합니다. `파일 → 모두 저장`은
+   수정한 모든 레이어를 저장합니다. 다른 레이어 파일에는 덮어쓸 수 없습니다.
+
+기존 마스크는 원본을 연 뒤 해당 레이어의 `마스크 열기`로 불러옵니다. 마스크를 편집하는
+동안에는 원본 픽셀이 바뀌지 않습니다. 열린 마스크가 있으면 원본의 해상도·원점·회전과
+이를 바꾸는 실행 취소/다시 실행을 잠급니다. `마스크 모두 닫기`로 해제할 수 있습니다.
+
+이 버전은 원본과 **동일한 격자**의 마스크를 지원합니다. 크기·해상도·원점이 다른 마스크는
+자동으로 늘이거나 옮기지 않고 오류를 표시합니다. Nav2 Costmap의 회전 원점 제한에 맞춰
+마스크 생성은 원본 Yaw가 0인 지도에서 지원합니다.
+
+두 마스크를 겹친 예제도 포함했습니다.
+
+```bash
+./run.sh examples/office.yaml --keepout examples/office_keepout.yaml --speed-mask examples/office_speed.yaml
+```
+
+### Nav2에서 사용하는 값
+
+마스크는 `mode: raw`, `negate: 0`으로 저장합니다. PGM의 실제 값 0은 제한 없음,
+진입 금지는 100, 속도 제한은 1~100(%)입니다. 외부 이미지 뷰어에서는 어둡게 보일 수
+있지만 정상입니다. 기존 trinary 마스크는 점유 판정을 유지한 채 읽습니다. 불러온 미확인
+셀은 255로 보존하고 회색으로 표시하며, 마우스를 올리면 `미확인`으로 표시합니다.
+
+| 마스크 | CostmapFilterInfo type | base | multiplier |
+| --- | --- | --- | --- |
+| 진입 금지 | 0 | 0.0 | 1.0 |
+| 속도 제한(비율) | 1 | 0.0 | 1.0 |
+
+Nav2에서 각 마스크용 Map Server와 Costmap Filter Info Server를 설정하고, Map Server의
+`topic_name`과 Info Server의 `mask_topic`을 동일하게 맞춰야 합니다. 이 에디터는 파일을
+만들며 ROS 노드를 실행하거나 로봇 설정을 변경하지 않습니다. 절대 속도(m/s) 인코딩은
+현재 지원하지 않습니다.
+
+설정 참고: [진입 금지](https://docs.nav2.org/rolling/tutorials/general_tutorials/navigation2_with_keepout_filter/navigation2_with_keepout_filter/),
+[속도 제한](https://docs.nav2.org/rolling/tutorials/general_tutorials/navigation2_with_speed_filter/navigation2_with_speed_filter/).
+
 ## 실행
 
 이미 빌드했다면:
@@ -92,7 +146,8 @@ PGM만 열면 기본 해상도 0.05 m/px, 원점 `[0,0,0]`에서 시작하고 �
 - Ubuntu, Windows, macOS. Qt 6.4+, CMake 3.21+, C++17 컴파일러가 필요합니다.
 - PGM P2/P5, Maxval 255. 저장은 8-bit P5입니다. 다른 Maxval은 정밀도를 조용히
   줄이지 않고 오류를 표시합니다. 최대 32 Mi 픽셀, YAML 최대 1 MiB입니다.
-- YAML의 mode 생략 또는 `trinary`를 지원합니다. `scale`/`raw`는 지원하지 않습니다.
+- 원본 지도는 mode 생략 또는 `trinary`를 지원합니다. 필터 마스크는 `raw`와 기존 `trinary`를
+  지원합니다. `scale`과 가중치형 keepout 마스크는 지원하지 않습니다.
   임계값은 `0 < free_thresh < occupied_thresh < 1`이고 미확인 회색을 표현할 수 있어야 합니다.
 - YAML 추가 키·값과 기존 픽셀값을 보존합니다. 실제 변경을 저장하면 YAML/PGM의
   주석과 서식은 재작성됩니다. 손대지 않은 메타데이터의 숫자 정밀도는 유지합니다.

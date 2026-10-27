@@ -1,23 +1,30 @@
 #pragma once
 #include "document.h"
 #include <QWidget>
+#include <QPolygonF>
 
 namespace Raster {
 void stroke(QImage &image, QPoint from, QPoint to, int diameter, int gray);
 void rectangle(QImage &image, QPoint from, QPoint to, int diameter, int gray, bool filled);
 void flood(QImage &image, QPoint start, int gray);
+void polygon(QImage &image, const QPolygonF &points, int gray);
 }
 class Canvas : public QWidget {
     Q_OBJECT
 public:
-    enum Tool { Pen, Eraser, Line, Rectangle, Fill, Hand, Picker };
+    enum Tool { Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon };
     explicit Canvas(Document *document, QWidget *parent = nullptr);
     void setTool(Tool tool);
     void setBrushSize(int size) { brushSize_ = size; update(); }
     void setGray(int gray) { gray_ = gray; update(); }
     void setEraserGray(int gray) { eraserGray_ = gray; }
     void setFilled(bool filled) { filled_ = filled; }
-    void finishEditing() { finishStroke(); }
+    void finishEditing();
+    bool undoPolygonPoint();
+    void setDocument(Document *document);
+    void setMaskLayers(Document *keepout, Document *speed);
+    void setMaskOpacity(double opacity) { maskOpacity_ = qBound(0., opacity, 1.); update(); }
+    void setMaskVisible(bool keepout, bool speed) { showKeepout_ = keepout; showSpeed_ = speed; update(); }
     void fit();
     void actualSize();
     void zoom(double factor);
@@ -38,6 +45,7 @@ protected:
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
+    void mouseDoubleClickEvent(QMouseEvent *) override;
     void wheelEvent(QWheelEvent *) override;
     void keyPressEvent(QKeyEvent *) override;
     void keyReleaseEvent(QKeyEvent *) override;
@@ -52,7 +60,15 @@ private:
     void zoomAt(double factor, QPointF anchor);
     void finishStroke();
     void cancelStroke();
+    void finishPolygon();
+    bool editableVisible() const;
     Document *doc_;
+    Document *base_;
+    Document *keepout_ = nullptr, *speed_ = nullptr;
+    double maskOpacity_ = .45;
+    bool showKeepout_ = true, showSpeed_ = true;
+    QPolygonF polygon_;
+    QPointF polygonHover_;
     Tool tool_ = Pen;
     int brushSize_ = 8, gray_ = 0, eraserGray_ = 205;
     double scale_ = 1;

@@ -9,6 +9,7 @@
 
 namespace {
 QByteArray hashFile(const QString &path) {
+    if (path.isEmpty()) return {};
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
     QCryptographicHash hash(QCryptographicHash::Sha256);
@@ -45,6 +46,7 @@ public:
     MetadataCommand(Document *d, const MapIO::Metadata &m) : QUndoCommand("지도 속성 변경"), doc(d), before(d->meta()), after(m) {}
     void undo() override { doc->map_.meta = before; emit doc->changed(); }
     void redo() override { doc->map_.meta = after; emit doc->changed(); }
+    bool geometry() const { return before.resolution != after.resolution || before.x != after.x || before.y != after.y || before.yaw != after.yaw; }
 private:
     Document *doc;
     MapIO::Metadata before, after;
@@ -70,20 +72,43 @@ private:
     QByteArray before, after;
     MapIO::Metadata oldMeta, newMeta;
 };
-Document::Document(QObject *parent) : QObject(parent), undo_(this) {
+Document::Document(QObject *parent, bool allowRaw) : QObject(parent), undo_(this), allowRaw_(allowRaw) {
     undo_.setUndoLimit(40);
     connect(&undo_, &QUndoStack::cleanChanged, this, &Document::changed);
     connect(&undo_, &QUndoStack::indexChanged, this, &Document::changed);
 }
 void Document::open(const QString &path) {
-    auto loadedMap = MapIO::load(path); // Keep current map on any parse failure.
+    auto loadedMap = MapIO::load(path, allowRaw_);
+    const bool needsSave = !loadedMap.hasYaml;
+    replace(std::move(loadedMap), needsSave);
+}
+void Document::replace(MapIO::Map loadedMap, bool needsSave) {
+    const auto error = MapIO::validate(loadedMap.meta, allowRaw_);
+    if (!error.isEmpty()) throw std::runtime_error(error.toUtf8().constData());
+    if (loadedMap.image.isNull() || loadedMap.image.format() != QImage::Format_Grayscale8)
+        throw std::runtime_error("유효한 이미지가 없습니다.");
     undo_.clear();
     map_ = std::move(loadedMap);
     historyBytes_ = 0; historyBaselineDirty_ = false;
-    needsPair_ = !map_.hasYaml;
+    needsPair_ = needsSave;
     refreshDiskHashes();
     emit loaded(); emit changed();
 }
+void Document::clear() {
+    map_ = {};
+    needsPair_ = historyBaselineDirty_ = false;
+    historyBytes_ = 0;
+    yamlHash_.clear(); imageHash_.clear();
+    undo_.clear(); emit changed();
+}
+namespace {
+bool geometryCommand(const QUndoCommand *command) {
+    if (auto *meta = dynamic_cast<const MetadataCommand *>(command)) return meta->geometry();
+    return dynamic_cast<const RotateCommand *>(command) != nullptr;
+}
+}
+bool Document::undoChangesGeometry() const { return undo_.canUndo() && geometryCommand(undo_.command(undo_.index() - 1)); }
+bool Document::redoChangesGeometry() const { return undo_.canRedo() && geometryCommand(undo_.command(undo_.index())); }
 void Document::newMap(int w, int h, double resolution) {
     if (w <= 0 || h <= 0 || qint64(w) * h > MapIO::MaxPixels) throw std::runtime_error("지도 크기 제한을 초과했습니다.");
     MapIO::Map fresh;
@@ -113,7 +138,7 @@ void Document::editImage(const QImage &after, const QString &label) {
     }
 }
 void Document::editMetadata(const MapIO::Metadata &meta) {
-    auto error = MapIO::validate(meta);
+    auto error = MapIO::validate(meta, allowRaw_);
     if (!error.isEmpty()) throw std::runtime_error(error.toUtf8().constData());
     if (meta != map_.meta) push(new MetadataCommand(this, meta), 512);
 }
@@ -163,7 +188,7 @@ MapIO::SaveResult Document::save(const QString &newPath) {
     const bool same = !map_.yamlPath.isEmpty() && MapIO::sameFilePath(path, map_.yamlPath);
     if (same && !diskMatches()) throw std::runtime_error("열어 둔 지도 파일이 외부에서 변경되었거나 삭제되었습니다. 다시 열거나 다른 이름으로 저장하세요.");
     if (same && !dirty()) return {map_.yamlPath, map_.imagePath, {}};
-    auto saved = MapIO::savePair(map_, path, same ? map_.imagePath : QString());
+    auto saved = MapIO::savePair(map_, path, same ? map_.imagePath : QString(), allowRaw_);
     map_.yamlPath = saved.yamlPath; map_.imagePath = saved.imagePath; map_.hasYaml = true;
     needsPair_ = false; historyBaselineDirty_ = false;
     refreshDiskHashes(); undo_.setClean(); emit changed();

@@ -6,7 +6,7 @@
 class Document : public QObject {
     Q_OBJECT
 public:
-    explicit Document(QObject *parent = nullptr);
+    explicit Document(QObject *parent = nullptr, bool allowRaw = false);
     const MapIO::Map &map() const { return map_; }
     const QImage &image() const { return map_.image; }
     const MapIO::Metadata &meta() const { return map_.meta; }
@@ -15,6 +15,10 @@ public:
     bool empty() const { return map_.image.isNull(); }
     void open(const QString &path);
     void newMap(int width, int height, double resolution);
+    void replace(MapIO::Map map, bool needsSave);
+    void clear();
+    bool undoChangesGeometry() const;
+    bool redoChangesGeometry() const;
     void editImage(const QImage &image, const QString &label);
     void editMetadata(const MapIO::Metadata &meta);
     void rotateImage(double clockwiseDegrees);
@@ -35,4 +39,5 @@ private:
     bool historyBaselineDirty_ = false;
     qsizetype historyBytes_ = 0;
     QByteArray yamlHash_, imageHash_;
+    bool allowRaw_ = false;
 };
