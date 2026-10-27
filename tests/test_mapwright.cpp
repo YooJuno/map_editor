@@ -5,6 +5,9 @@
 #include <QFile>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QAction>
+#include <QMouseEvent>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <cmath>
@@ -52,7 +55,7 @@ private slots:
         QTest::newRow("negative") << QByteArray("P5\n-1 2\n255\n");
         QTest::newRow("zero") << QByteArray("P5\n0 2\n255\n");
         QTest::newRow("huge") << QByteArray("P5\n99999999999 2\n255\n");
-        QTest::newRow("depth16") << QByteArray("P5\n1 1\n65535\n\0\0", 17);
+        QTest::newRow("depth16") << (QByteArray("P5\n1 1\n65535\n") + QByteArray(2, '\0'));
         QTest::newRow("truncated") << QByteArray("P5\n2 1\n255\nA");
         QTest::newRow("extra-raster") << QByteArray("P5\n1 1\n255\nAB");
         QTest::newRow("out-of-range") << QByteArray("P2\n1 1\n255\n256\n");
@@ -232,6 +235,148 @@ private slots:
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({7.5, 4.5}).toPoint());
         canvas->setFocus(); QTest::keySequence(canvas, QKeySequence::Save); QCoreApplication::processEvents();
         QCOMPARE(int(MapIO::load(saved.yamlPath).image.constScanLine(4)[7]), 205);
+        window.close();
+    }
+    void clippedDrawingDoesNotInventEdges() {
+        auto im = image(20, 20, 255);
+        Raster::rectangle(im, {-5, -5}, {5, 5}, 1, 0, false);
+        QCOMPARE(int(im.constScanLine(0)[0]), 255);
+        QCOMPARE(int(im.constScanLine(3)[0]), 255);
+        QCOMPARE(int(im.constScanLine(3)[5]), 0);
+        QCOMPARE(int(im.constScanLine(5)[3]), 0);
+        Raster::stroke(im, {-1000000, 10}, {1000000, 10}, 1, 0);
+        for (int x = 0; x < 20; ++x) QCOMPARE(int(im.constScanLine(10)[x]), 0);
+        QCOMPARE(int(im.constScanLine(9)[10]), 255);
+        const auto unchanged = im.copy();
+        Raster::stroke(im, {-50, -50}, {-20, -20}, 1, 0);
+        QCOMPARE(im, unchanged);
+    }
+    void unchangedSavePreservesOriginalBytes() {
+        QTemporaryDir dir; auto m = map();
+        auto saved = MapIO::savePair(m, dir.filePath("original.yaml"));
+        const auto yaml = QByteArray("# keep my comments\n") + read(saved.yamlPath);
+        write(saved.yamlPath, yaml);
+        const auto pgm = read(saved.imagePath);
+        Document doc; doc.open(saved.yamlPath);
+        const auto result = doc.save();
+        QVERIFY(result.backupDirectory.isEmpty());
+        QCOMPARE(read(saved.yamlPath), yaml);
+        QCOMPARE(read(saved.imagePath), pgm);
+        QVERIFY(!QFileInfo::exists(dir.filePath(".mapwright-backups")));
+    }
+    void guiDragOutsideDoesNotPaintMapBorder() {
+        QTemporaryDir dir; auto saved = MapIO::savePair(map(), dir.filePath("clip.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(saved.yamlPath);
+        auto *canvas = window.canvas(); canvas->fit();
+        window.findChild<QSpinBox *>("brushSize")->setValue(1);
+        const auto start = canvas->screenPoint({2.5, 3.5});
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, start.toPoint());
+        auto move = [&](QPointF pixel) {
+            const auto pos = canvas->screenPoint(pixel);
+            QMouseEvent event(QEvent::MouseMove, pos, QPointF(canvas->mapToGlobal(pos.toPoint())), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(canvas, &event);
+        };
+        move({-4.5, 3.5}); move({-4.5, 8.5});
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({-4.5, 8.5}).toPoint());
+        window.findChild<QAction *>("saveAction")->trigger();
+        const auto result = MapIO::load(saved.yamlPath).image;
+        QCOMPARE(int(result.constScanLine(3)[0]), 0);
+        QCOMPARE(int(result.constScanLine(6)[0]), 205);
+        window.close();
+    }
+    void guiMetadataRevertAndPrecision() {
+        QTemporaryDir dir; auto original = map(); original.meta.x = 1.23456789123;
+        auto saved = MapIO::savePair(original, dir.filePath("fields.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(saved.yamlPath);
+        auto *x = window.findChild<QDoubleSpinBox *>("originX"); const double displayed = x->value();
+        x->setValue(9); QVERIFY(window.isWindowModified());
+        x->setValue(displayed); QVERIFY(!window.isWindowModified());
+        QVERIFY(!window.findChild<QPushButton *>("applyMetadata")->isEnabled());
+        x->setValue(8);
+        window.findChild<QAction *>("undoAction")->trigger();
+        QCOMPARE(x->value(), displayed); QVERIFY(!window.isWindowModified());
+        x->setValue(7); window.findChild<QPushButton *>("revertMetadata")->click();
+        QVERIFY(!window.isWindowModified());
+        window.findChild<QDoubleSpinBox *>("originY")->setValue(2);
+        window.findChild<QPushButton *>("applyMetadata")->click();
+        window.findChild<QAction *>("saveAction")->trigger();
+        QCOMPARE(MapIO::load(saved.yamlPath).meta.x, original.meta.x);
+        window.close();
+    }
+    void guiSeparateBrushWidths() {
+        QTemporaryDir dir; auto saved = MapIO::savePair(map(), dir.filePath("sizes.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(saved.yamlPath);
+        auto *size = window.findChild<QSpinBox *>("brushSize");
+        size->setValue(3);
+        window.findChild<QPushButton *>("eraserTool")->click(); size->setValue(17);
+        window.findChild<QPushButton *>("penTool")->click(); QCOMPARE(size->value(), 3);
+        window.findChild<QPushButton *>("eraserTool")->click(); QCOMPARE(size->value(), 17);
+        window.findChild<QPushButton *>("fillTool")->click(); QVERIFY(!size->isEnabled());
+        window.findChild<QPushButton *>("lineTool")->click(); QCOMPARE(size->value(), 3); QVERIFY(size->isEnabled());
+        size->setValue(512); QCOMPARE(size->value(), 512);
+        window.close();
+    }
+    void guiSaveFinishesActiveStroke() {
+        QTemporaryDir dir; auto saved = MapIO::savePair(map(), dir.filePath("stroke.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(saved.yamlPath);
+        auto *canvas = window.canvas(); canvas->fit();
+        window.findChild<QSpinBox *>("brushSize")->setValue(1);
+        const auto point = canvas->screenPoint({7.5, 4.5}).toPoint();
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, point);
+        // The action can be invoked while the mouse is still held down.
+        QVERIFY(window.findChild<QAction *>("saveAction")->isEnabled());
+        QTest::keySequence(canvas, QKeySequence::Save);
+        QCOMPARE(int(MapIO::load(saved.yamlPath).image.constScanLine(4)[7]), 0);
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, point);
+        QVERIFY(!window.isWindowModified()); window.close();
+    }
+    void canvasResizeKeepsFitOrViewCenter() {
+        Document doc; doc.newMap(400, 300, .05);
+        Canvas canvas(&doc); canvas.resize(600, 400); canvas.show();
+        QCoreApplication::processEvents(); canvas.fit(); const auto before = canvas.scale();
+        canvas.resize(800, 600); QCoreApplication::processEvents();
+        QVERIFY(canvas.scale() > before);
+        QVERIFY(QLineF(canvas.screenPoint({200, 150}), {400, 300}).length() < 1);
+        canvas.zoom(2);
+        const auto center = canvas.mapPoint({400, 300});
+        canvas.resize(900, 700); QCoreApplication::processEvents();
+        QVERIFY(QLineF(canvas.mapPoint({450, 350}), center).length() < 1e-8);
+    }
+    void canvasPickerExcludesRightAndBottomBoundary() {
+        Document doc; doc.newMap(16, 12, .05);
+        Canvas canvas(&doc); canvas.resize(600, 400); canvas.show(); QCoreApplication::processEvents(); canvas.fit();
+        canvas.setTool(Canvas::Picker); QSignalSpy samples(&canvas, &Canvas::colorPicked);
+        auto click = [&](QPointF pixel) {
+            const auto pos = canvas.screenPoint(pixel);
+            QMouseEvent press(QEvent::MouseButtonPress, pos, QPointF(canvas.mapToGlobal(pos.toPoint())), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(&canvas, &press);
+        };
+        click({16, 5}); click({5, 12}); click({-.01, 5});
+        QCOMPARE(samples.count(), 0);
+        click({15.5, 11.5}); QCOMPARE(samples.count(), 1);
+    }
+    void guiUndoDuringActiveStroke() {
+        QTemporaryDir dir; auto saved = MapIO::savePair(map(), dir.filePath("active-undo.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(saved.yamlPath);
+        auto *canvas = window.canvas(); canvas->fit();
+        const auto point = canvas->screenPoint({7.5, 4.5}).toPoint();
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, point);
+        QVERIFY(window.isWindowModified()); QVERIFY(window.findChild<QAction *>("undoAction")->isEnabled());
+        QTest::keySequence(canvas, QKeySequence::Undo);
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, point);
+        QVERIFY(!window.isWindowModified()); window.close();
+    }
+    void focusLossReleasesTemporaryPan() {
+        QTemporaryDir dir; auto saved = MapIO::savePair(map(), dir.filePath("focus.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(saved.yamlPath);
+        auto *canvas = window.canvas(); canvas->fit(); canvas->setFocus();
+        QTest::keyPress(canvas, Qt::Key_Space);
+        window.findChild<QDoubleSpinBox *>("originX")->setFocus(); QCoreApplication::processEvents();
+        // Key release occurred elsewhere. The next click on the canvas must paint.
+        const auto point = canvas->screenPoint({7.5, 4.5}).toPoint();
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, point);
+        window.findChild<QAction *>("saveAction")->trigger();
+        QCOMPARE(int(MapIO::load(saved.yamlPath).image.constScanLine(4)[7]), 0);
         window.close();
     }
 };

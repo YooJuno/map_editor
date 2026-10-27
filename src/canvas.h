@@ -17,10 +17,12 @@ public:
     void setGray(int gray) { gray_ = gray; update(); }
     void setEraserGray(int gray) { eraserGray_ = gray; }
     void setFilled(bool filled) { filled_ = filled; }
+    void finishEditing() { finishStroke(); }
     void fit();
     void actualSize();
     void zoom(double factor);
     double scale() const { return scale_; }
+    bool isEditing() const { return drawing_; }
     void setAxes(bool visible) { axes_ = visible; update(); }
     QPointF mapPoint(QPointF pos) const { return (pos - offset_) / scale_; }
     QPointF screenPoint(QPointF pos) const { return offset_ + pos * scale_; }
@@ -29,6 +31,7 @@ signals:
     void zoomChanged(double scale);
     void fileDropped(const QString &path);
     void colorPicked(int gray);
+    void editingChanged();
 protected:
     void paintEvent(QPaintEvent *) override;
     void resizeEvent(QResizeEvent *) override;
@@ -39,10 +42,12 @@ protected:
     void keyPressEvent(QKeyEvent *) override;
     void keyReleaseEvent(QKeyEvent *) override;
     void leaveEvent(QEvent *) override;
+    void focusOutEvent(QFocusEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
     void dropEvent(QDropEvent *) override;
 private:
-    QPoint bounded(QPointF pos) const;
+    QPoint pixelPoint(QPointF pos) const;
+    bool insideImage(QPointF position) const;
     int activeGray() const { return tool_ == Eraser ? eraserGray_ : gray_; }
     void zoomAt(double factor, QPointF anchor);
     void finishStroke();
@@ -54,5 +59,6 @@ private:
     QPointF offset_, panStart_, mouse_;
     QPoint start_, last_;
     bool drawing_ = false, panning_ = false, space_ = false, inside_ = false, axes_ = true, filled_ = false;
+    bool fitted_ = true;
     QImage draft_;
 };

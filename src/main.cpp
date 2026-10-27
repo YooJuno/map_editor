@@ -3,13 +3,16 @@
 #include <QCommandLineParser>
 #include <QFile>
 #include <QFontDatabase>
+#include <QStyle>
 #include <QTimer>
 #include <cstdio>
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
-    QCoreApplication::setOrganizationName("Mapwright"); QCoreApplication::setApplicationName("Mapwright"); QCoreApplication::setApplicationVersion("1.0.0");
+    QCoreApplication::setOrganizationName("Mapwright"); QCoreApplication::setApplicationName("Mapwright"); QCoreApplication::setApplicationVersion("1.1.0");
+    QGuiApplication::setApplicationDisplayName("Map Editor");
     app.setStyle("Fusion");
+    app.setPalette(app.style()->standardPalette());
     const auto families = QFontDatabase::families();
     for (const auto &family : {QString("Noto Sans CJK KR"), QString("Malgun Gothic"), QString("Apple SD Gothic Neo"), QString("Noto Sans")}) {
         if (families.contains(family)) { app.setFont(QFont(family, 10)); break; }

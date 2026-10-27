@@ -7,13 +7,14 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QDockWidget>
 #include <QDoubleSpinBox>
-#include <QFileDialog>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
-#include <QGridLayout>
 #include <QFrame>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -23,184 +24,377 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QSignalBlocker>
-#include <QSlider>
 #include <QSpinBox>
-#include <QSplitter>
 #include <QStatusBar>
+#include <QStyle>
 #include <QToolBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <cmath>
 
 namespace {
 constexpr double Rad = 3.14159265358979323846 / 180.;
-QLabel *section(const QString &title, QVBoxLayout *layout) {
-    auto *label = new QLabel(title); label->setObjectName("sectionTitle"); layout->addWidget(label); return label;
-}
-QLabel *hint(const QString &text, QVBoxLayout *layout) {
-    auto *label = new QLabel(text); label->setWordWrap(true); label->setObjectName("hint"); layout->addWidget(label); return label;
-}
+
+class NumberBox : public QDoubleSpinBox {
+public:
+    using QDoubleSpinBox::QDoubleSpinBox;
+protected:
+    QString textFromValue(double value) const override {
+        auto text = QLocale::c().toString(value, 'f', decimals());
+        if (text.contains('.')) {
+            while (text.endsWith('0')) text.chop(1);
+            if (text.endsWith('.')) text.chop(1);
+        }
+        return text;
+    }
+};
+
 QDoubleSpinBox *spin(const QString &name, double min, double max, int digits, double step) {
-    auto *s = new QDoubleSpinBox; s->setObjectName(name); s->setRange(min, max); s->setDecimals(digits); s->setSingleStep(step);
-    s->setKeyboardTracking(false); s->setMinimumWidth(140); s->setLocale(QLocale::c()); return s;
+    auto *box = new NumberBox;
+    box->setObjectName(name);
+    box->setRange(min, max);
+    box->setDecimals(digits);
+    box->setSingleStep(step);
+    box->setKeyboardTracking(false);
+    box->setLocale(QLocale::c());
+    box->setMinimumWidth(115);
+    return box;
 }
-QFrame *separator() { auto *f = new QFrame; f->setFrameShape(QFrame::HLine); f->setObjectName("separator"); return f; }
+
+QFrame *separator() {
+    auto *line = new QFrame;
+    line->setFrameShape(QFrame::VLine);
+    line->setFrameShadow(QFrame::Sunken);
+    return line;
 }
+}
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), canvas_(new Canvas(&doc_)) {
-    setObjectName("mainWindow"); setMinimumSize(1020, 700); resize(1390, 880);
-    setWindowIcon(QIcon(":/mapwright.png"));
-    auto *root = new QWidget; auto *layout = new QVBoxLayout(root); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(0);
-    auto *header = new QFrame; header->setObjectName("header");
-    auto *row = new QHBoxLayout(header); row->setContentsMargins(22, 13, 22, 13); row->setSpacing(14);
-    auto *mark = new QLabel; mark->setPixmap(QPixmap(":/mapwright.png").scaled(38, 38, Qt::KeepAspectRatio, Qt::SmoothTransformation)); row->addWidget(mark);
-    auto *brand = new QVBoxLayout; brand->setSpacing(1);
-    auto *name = new QLabel("Mapwright"); name->setObjectName("brand"); brand->addWidget(name);
-    auto *tag = new QLabel("OCCUPANCY MAP EDITOR"); tag->setObjectName("brandTag"); brand->addWidget(tag); row->addLayout(brand);
-    row->addSpacing(20);
-    auto *fileInfo = new QVBoxLayout; fileInfo->setSpacing(2);
-    fileLabel_ = new QLabel("열린 지도 없음"); fileLabel_->setObjectName("fileName"); fileInfo->addWidget(fileLabel_);
-    details_ = new QLabel("PGM + YAML · ROS / Nav2"); details_->setObjectName("hint"); fileInfo->addWidget(details_); row->addLayout(fileInfo); row->addStretch();
-    auto *openButton = new QPushButton("지도 열기"); openButton->setObjectName("openButton"); connect(openButton, &QPushButton::clicked, this, &MainWindow::open); row->addWidget(openButton);
-    auto *saveAs = new QPushButton("다른 이름으로 저장"); connect(saveAs, &QPushButton::clicked, this, [this] { save(true); }); row->addWidget(saveAs);
-    auto *saveButton = new QPushButton("저장"); saveButton->setObjectName("primary"); connect(saveButton, &QPushButton::clicked, this, [this] { save(); }); row->addWidget(saveButton);
-    layout->addWidget(header);
-    auto *splitter = new QSplitter; splitter->setChildrenCollapsible(false);
-    splitter->addWidget(makeTools()); splitter->addWidget(canvas_); splitter->addWidget(makeProperties());
-    splitter->setStretchFactor(0, 0); splitter->setStretchFactor(1, 1); splitter->setStretchFactor(2, 0);
-    splitter->setSizes({225, 840, 290}); layout->addWidget(splitter, 1);
-    setCentralWidget(root); makeActions();
-    coordinates_ = new QLabel("마우스를 지도 위로 이동하세요"); coordinates_->setMargin(4); statusBar()->addPermanentWidget(coordinates_, 1); statusBar()->setMinimumHeight(30);
-    auto *tip = new QLabel("휠 확대 · 가운데 버튼 / Space+드래그 이동"); tip->setObjectName("hint"); statusBar()->addPermanentWidget(tip);
-    zoomLabel_ = new QLabel("100%"); zoomLabel_->setMinimumWidth(68); zoomLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter); statusBar()->addPermanentWidget(zoomLabel_);
-    connect(canvas_, &Canvas::zoomChanged, this, [this](double s) { zoomLabel_->setText(QString::number(s * 100, 'f', s < .1 ? 1 : 0) + "%"); });
+    setObjectName("mainWindow");
+    setMinimumSize(1020, 640);
+    resize(1280, 800);
+    setWindowIcon(style()->standardIcon(QStyle::SP_FileIcon));
+    setCentralWidget(canvas_);
+    makeActions();
+
+    auto *fileBar = addToolBar("파일 및 보기");
+    fileBar->setObjectName("fileToolbar");
+    fileBar->setMovable(false);
+    fileBar->setIconSize({16, 16});
+    fileBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    fileBar->addAction(newAction_);
+    fileBar->addAction(openAction_);
+    fileBar->addAction(saveAction_);
+    fileBar->addAction(saveAsAction_);
+    fileBar->addSeparator();
+    fileBar->addAction(undoAction_);
+    fileBar->addAction(redoAction_);
+    fileBar->addSeparator();
+    fileBar->addAction(fitAction_);
+    fileBar->addAction(actualAction_);
+    fileBar->addAction(zoomOutAction_);
+    fileBar->addAction(zoomInAction_);
+
+    addToolBarBreak();
+    auto *drawBar = addToolBar("그리기");
+    drawBar->setObjectName("drawingToolbar");
+    drawBar->setMovable(false);
+    toolPanel_ = makeTools();
+    drawBar->addWidget(toolPanel_);
+
+    propertiesDock_ = new QDockWidget("지도 속성", this);
+    propertiesDock_->setObjectName("propertiesDock");
+    propertiesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    propertiesDock_->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    propertiesDock_->setWidget(makeProperties());
+    addDockWidget(Qt::RightDockWidgetArea, propertiesDock_);
+    resizeDocks({propertiesDock_}, {270}, Qt::Horizontal);
+    viewMenu_->addAction(propertiesDock_->toggleViewAction());
+
+    coordinates_ = new QLabel("준비");
+    coordinates_->setMargin(3);
+    coordinates_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    statusBar()->addPermanentWidget(coordinates_, 1);
+    statusBar()->setMinimumHeight(25);
+    zoomLabel_ = new QLabel;
+    zoomLabel_->setMinimumWidth(55);
+    zoomLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    statusBar()->addPermanentWidget(zoomLabel_);
+
+    connect(canvas_, &Canvas::zoomChanged, this, [this](double scale) {
+        zoomLabel_->setText(QString::number(scale * 100, 'f', scale < .1 ? 1 : 0) + "%");
+    });
     connect(canvas_, &Canvas::fileDropped, this, &MainWindow::openPath);
     connect(canvas_, &Canvas::colorPicked, this, &MainWindow::sampleColor);
-    connect(canvas_, &Canvas::positionChanged, this, [this](QPointF p) {
-        if (!QRectF(doc_.image().rect()).contains(p)) { coordinates_->setText("지도 영역 밖"); return; }
-        const QPoint cell(int(std::floor(p.x())), int(std::floor(p.y())));
+    connect(canvas_, &Canvas::editingChanged, this, &MainWindow::refresh);
+    connect(canvas_, &Canvas::positionChanged, this, [this](QPointF point) {
+        if (doc_.empty() || point.x() < 0 || point.y() < 0 || point.x() >= doc_.image().width() || point.y() >= doc_.image().height()) return;
+        const QPoint cell(int(std::floor(point.x())), int(std::floor(point.y())));
         const auto world = MapIO::pixelToWorld(QPointF(cell) + QPointF(.5, .5), doc_.image().height(), doc_.meta());
-        const auto gray = doc_.image().constScanLine(cell.y())[cell.x()];
-        const auto prob = MapIO::probability(gray, doc_.meta());
-        const QString role = prob > doc_.meta().occupied ? "장애물" : (prob < doc_.meta().free ? "빈 공간" : "미확인");
-        coordinates_->setText(QString("px %1, %2   ·   world %3, %4 m   ·   %5 (%6)").arg(cell.x()).arg(cell.y()).arg(world.x(), 0, 'f', 3).arg(world.y(), 0, 'f', 3).arg(gray).arg(role));
+        const int gray = doc_.image().constScanLine(cell.y())[cell.x()];
+        const auto probability = MapIO::probability(gray, doc_.meta());
+        const auto role = probability > doc_.meta().occupied ? "장애물" : (probability < doc_.meta().free ? "빈 공간" : "미확인");
+        coordinates_->setText(QString("픽셀 %1, %2    좌표 %3, %4 m    값 %5 (%6)")
+            .arg(cell.x()).arg(cell.y()).arg(world.x(), 0, 'f', 3).arg(world.y(), 0, 'f', 3).arg(gray).arg(role));
     });
     connect(&doc_, &Document::changed, this, &MainWindow::refresh);
-    connect(&doc_, &Document::loaded, this, [this] { pending_.clear(); sampledGray_ = -1; refreshFields(); canvas_->setFocus(); });
-    const auto geometry = QSettings().value("windowGeometry").toByteArray(); if (!geometry.isEmpty()) restoreGeometry(geometry);
-    refreshFields(); refresh();
-}
-QWidget *MainWindow::makeTools() {
-    auto *scroll = new QScrollArea; scroll->setFrameShape(QFrame::NoFrame); scroll->setWidgetResizable(true); scroll->setMinimumWidth(215); scroll->setMaximumWidth(270);
-    auto *panel = new QFrame; panel->setObjectName("toolsPanel");
-    auto *layout = new QVBoxLayout(panel); layout->setContentsMargins(18, 23, 18, 18); layout->setSpacing(10); layout->setSizeConstraint(QLayout::SetMinimumSize);
-    section("편집 도구", layout);
-    tools_ = new QButtonGroup(this); tools_->setExclusive(true);
-    const QStringList labels{"펜 · B", "지우개 · E", "직선 · L", "사각형 · R", "채우기 · G", "이동 · H", "스포이드 · I"};
-    const QStringList names{"penTool", "eraserTool", "lineTool", "rectangleTool", "fillTool", "handTool", "pickerTool"};
-    auto *toolGrid = new QGridLayout; toolGrid->setSpacing(6);
-    for (int i = 0; i < labels.size(); ++i) {
-        auto *b = new QPushButton(labels[i]); b->setCheckable(true); b->setObjectName(names[i]); b->setProperty("tool", true); b->setMinimumHeight(34);
-        tools_->addButton(b, i); toolGrid->addWidget(b, i / 2, i % 2, 1, i == Canvas::Picker ? 2 : 1); if (i == 0) b->setChecked(true);
-    }
-    layout->addLayout(toolGrid);
-    connect(tools_, &QButtonGroup::idClicked, this, [this](int id) {
-        if (id >= Canvas::Pen && id <= Canvas::Fill) lastPaintTool_ = id;
-        canvas_->setTool(Canvas::Tool(id)); canvas_->setFocus();
+    connect(&doc_, &Document::loaded, this, [this] {
+        pending_.clear();
+        sampledGray_ = -1;
+        refreshFields();
+        canvas_->setFocus();
     });
-    layout->addSpacing(8); layout->addWidget(separator()); section("세 가지 지도색", layout);
-    colors_ = new QButtonGroup(this); auto *colorsRow = new QHBoxLayout; colorsRow->setSpacing(6);
-    for (int i = 0; i < 3; ++i) {
-        auto *b = new QPushButton; b->setCheckable(true); b->setObjectName("color" + QString::number(i)); b->setMinimumHeight(62);
-        colors_->addButton(b, i); colorsRow->addWidget(b);
-    }
-    layout->addLayout(colorsRow); connect(colors_, &QButtonGroup::idClicked, this, [this](int i) { chooseColor(i); canvas_->setFocus(); });
-    paletteNote_ = hint("", layout);
-    resetGray_ = new QPushButton("회색 자동값으로 복원"); resetGray_->setObjectName("resetGray"); layout->addWidget(resetGray_);
-    connect(resetGray_, &QPushButton::clicked, this, [this] { sampledGray_ = -1; refreshPalette(); canvas_->setFocus(); });
-    layout->addSpacing(6); section("브러시 굵기", layout);
-    auto *sizes = new QHBoxLayout; sizeSlider_ = new QSlider(Qt::Horizontal); sizeSlider_->setRange(1, 128); sizeSlider_->setValue(8); sizeSlider_->setObjectName("brushSlider");
-    size_ = new QSpinBox; size_->setRange(1, 512); size_->setValue(8); size_->setSuffix(" px"); size_->setObjectName("brushSize"); size_->setMinimumWidth(80);
-    sizes->addWidget(sizeSlider_, 1); sizes->addWidget(size_); layout->addLayout(sizes);
-    connect(sizeSlider_, &QSlider::valueChanged, size_, &QSpinBox::setValue);
-    connect(size_, &QSpinBox::valueChanged, this, [this](int v) { QSignalBlocker block(sizeSlider_); sizeSlider_->setValue(v); canvas_->setBrushSize(v); });
-    auto *filled = new QCheckBox("사각형 내부 채우기"); connect(filled, &QCheckBox::toggled, canvas_, &Canvas::setFilled); layout->addWidget(filled);
-    layout->addSpacing(6); section("지우개로 바꿀 색", layout);
-    eraser_ = new QComboBox; eraser_->setObjectName("eraserColor"); eraser_->addItems({"회색 · 미확인", "흰색", "검은색"}); layout->addWidget(eraser_);
-    connect(eraser_, &QComboBox::currentIndexChanged, this, [this] { refreshPalette(); });
-    hint("지우개도 선택한 지도색으로 칠합니다. 투명 픽셀은 만들지 않습니다.", layout);
-    layout->addStretch();
-    auto *fit = new QPushButton("화면에 맞추기     F"); connect(fit, &QPushButton::clicked, canvas_, &Canvas::fit); layout->addWidget(fit);
-    auto *actual = new QPushButton("실제 픽셀 크기     0"); connect(actual, &QPushButton::clicked, canvas_, &Canvas::actualSize); layout->addWidget(actual);
-    scroll->setWidget(panel); return scroll;
+    const auto geometry = QSettings().value("windowGeometry").toByteArray();
+    if (!geometry.isEmpty()) restoreGeometry(geometry);
+    refresh();
 }
+
+QWidget *MainWindow::makeTools() {
+    auto *panel = new QWidget;
+    auto *row = new QHBoxLayout(panel);
+    row->setContentsMargins(4, 2, 4, 2);
+    row->setSpacing(4);
+    tools_ = new QButtonGroup(this);
+    const QStringList labels{"펜", "지우개", "직선", "사각형", "채우기", "이동", "스포이드"};
+    const QStringList keys{"B", "E", "L", "R", "G", "H", "I"};
+    const QStringList names{"penTool", "eraserTool", "lineTool", "rectangleTool", "fillTool", "handTool", "pickerTool"};
+    for (int i = 0; i < labels.size(); ++i) {
+        auto *button = new QPushButton(labels[i]);
+        button->setObjectName(names[i]);
+        button->setCheckable(true);
+        button->setToolTip(labels[i] + " (" + keys[i] + ")");
+        button->setMinimumHeight(26);
+        tools_->addButton(button, i);
+        row->addWidget(button);
+        if (i == Canvas::Pen) button->setChecked(true);
+    }
+    connect(tools_, &QButtonGroup::idClicked, this, &MainWindow::selectTool);
+    row->addWidget(separator());
+    row->addWidget(new QLabel("색"));
+    colors_ = new QButtonGroup(this);
+    for (int i = 0; i < 3; ++i) {
+        auto *button = new QPushButton;
+        button->setObjectName("color" + QString::number(i));
+        button->setCheckable(true);
+        button->setFixedSize(39, 26);
+        colors_->addButton(button, i);
+        row->addWidget(button);
+    }
+    connect(colors_, &QButtonGroup::idClicked, this, [this](int index) { chooseColor(index); canvas_->setFocus(); });
+    resetGray_ = new QPushButton("초기화");
+    resetGray_->setObjectName("resetGray");
+    resetGray_->setToolTip("회색을 YAML 임계값 기준으로 되돌리기");
+    row->addWidget(resetGray_);
+    connect(resetGray_, &QPushButton::clicked, this, [this] { sampledGray_ = -1; refreshPalette(); canvas_->setFocus(); });
+    row->addWidget(separator());
+    row->addWidget(new QLabel("굵기"));
+    size_ = new QSpinBox;
+    size_->setObjectName("brushSize");
+    size_->setRange(1, 512);
+    size_->setValue(penSize_);
+    size_->setSuffix(" px");
+    size_->setFixedWidth(82);
+    row->addWidget(size_);
+    connect(size_, &QSpinBox::valueChanged, this, [this](int value) {
+        if (currentTool_ == Canvas::Eraser) eraserSize_ = value;
+        else penSize_ = value;
+        canvas_->setBrushSize(value);
+    });
+    filled_ = new QCheckBox("내부 채움");
+    filled_->setObjectName("filledRectangle");
+    filled_->setToolTip("사각형 내부를 선택한 색으로 채우기");
+    filled_->setEnabled(false);
+    row->addWidget(filled_);
+    connect(filled_, &QCheckBox::toggled, canvas_, &Canvas::setFilled);
+    row->addWidget(separator());
+    row->addWidget(new QLabel("지우개 색"));
+    eraser_ = new QComboBox;
+    eraser_->setObjectName("eraserColor");
+    eraser_->addItems({"회색", "흰색", "검정"});
+    eraser_->setMinimumWidth(90);
+    eraser_->setEnabled(false);
+    row->addWidget(eraser_);
+    connect(eraser_, &QComboBox::currentIndexChanged, this, [this] { refreshPalette(); });
+    row->addStretch();
+    return panel;
+}
+
 QWidget *MainWindow::makeProperties() {
-    auto *scroll = new QScrollArea; scroll->setObjectName("propertiesScroll"); scroll->setFrameShape(QFrame::NoFrame); scroll->setWidgetResizable(true); scroll->setMinimumWidth(280); scroll->setMaximumWidth(335);
-    auto *panel = new QFrame; panel->setObjectName("propertiesPanel"); auto *layout = new QVBoxLayout(panel); layout->setContentsMargins(19, 23, 19, 18); layout->setSpacing(12);
-    section("지도 속성", layout); hint("PGM 이미지와 YAML을 함께 저장합니다.", layout);
-    auto *form = new QFormLayout; form->setSpacing(10); form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    resolution_ = spin("resolution", .000000001, 1000000, 9, .01); resolution_->setSuffix(" m/px"); form->addRow("해상도", resolution_); layout->addLayout(form);
-    layout->addWidget(separator()); section("Origin · 지도 원점", layout);
-    auto *origin = new QFormLayout; origin->setSpacing(10); origin->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    x_ = spin("originX", -1e12, 1e12, 6, .1); x_->setSuffix(" m"); origin->addRow("X", x_);
-    y_ = spin("originY", -1e12, 1e12, 6, .1); y_->setSuffix(" m"); origin->addRow("Y", y_);
-    yaw_ = spin("originYaw", -1e9, 1e9, 6, 1); yaw_->setSuffix(" °"); origin->addRow("Yaw", yaw_); layout->addLayout(origin);
-    radLabel_ = hint("", layout);
-    hint("왼쪽 아래 모서리의 월드 위치입니다. Yaw는 좌표계 방향을 바꿉니다.", layout);
-    apply_ = new QPushButton("속성 적용"); apply_->setObjectName("applyMetadata"); connect(apply_, &QPushButton::clicked, this, [this] { applyMetadata(); }); layout->addWidget(apply_);
-    metadataState_ = hint("", layout); metadataState_->setObjectName("metadataState");
-    auto *rotateButton = new QPushButton("이미지 자체 회전…"); rotateButton->setObjectName("rotateImage"); connect(rotateButton, &QPushButton::clicked, this, &MainWindow::rotate); layout->addWidget(rotateButton);
-    hint("이미지를 회전하면 원점도 보정하여 월드 좌표를 유지합니다.", layout);
-    layout->addWidget(separator()); section("점유 판정 · Trinary", layout);
-    auto *thresholds = new QFormLayout; thresholds->setSpacing(10); thresholds->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    free_ = spin("freeThreshold", .000001, .999999, 6, .01); occupied_ = spin("occupiedThreshold", .000001, .999999, 6, .01);
-    thresholds->addRow("Free", free_); thresholds->addRow("Occupied", occupied_); layout->addLayout(thresholds);
-    negate_ = new QComboBox; negate_->setObjectName("negate"); negate_->addItems({"negate 0 · 검정 = 장애물", "negate 1 · 흰색 = 장애물"}); layout->addWidget(negate_);
-    hint("기존 픽셀은 그대로 유지됩니다. 임계값을 바꾸면 점유 판정이 달라집니다.", layout);
-    auto *normalize = new QPushButton("전체 지도를 3색으로 정리"); normalize->setObjectName("normalizeMap"); connect(normalize, &QPushButton::clicked, this, [this] {
-        if (doc_.empty() || !applyMetadata()) return;
-        doc_.editImage(MapIO::trinary(doc_.image(), doc_.meta()), "3색 정리");
-        coordinates_->setText("세 가지 색으로 정리했습니다. 실행 취소할 수 있습니다.");
-    }); layout->addWidget(normalize);
-    auto *axes = new QCheckBox("원점 / 월드 축 표시"); axes->setChecked(true); connect(axes, &QCheckBox::toggled, canvas_, &Canvas::setAxes); layout->addWidget(axes);
-    layout->addStretch(); hint("YAML 추가 필드는 보존합니다.\n주석과 서식은 저장 시 재작성됩니다.", layout);
+    auto *scroll = new QScrollArea;
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setMinimumWidth(250);
+    auto *panel = new QWidget;
+    propertiesPanel_ = panel;
+    auto *layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(12);
+    fileLabel_ = new QLabel;
+    fileLabel_->setWordWrap(true);
+    fileLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    layout->addWidget(fileLabel_);
+    details_ = new QLabel;
+    layout->addWidget(details_);
+
+    auto *resolutionForm = new QFormLayout;
+    resolution_ = spin("resolution", .000000001, 1000000, 9, .01);
+    resolution_->setSuffix(" m/px");
+    resolutionForm->addRow("해상도", resolution_);
+    layout->addLayout(resolutionForm);
+    auto *originGroup = new QGroupBox("원점 (Origin)");
+    originGroup->setToolTip("지도의 왼쪽 아래 모서리에 해당하는 월드 좌표");
+    auto *origin = new QFormLayout(originGroup);
+    x_ = spin("originX", -1e12, 1e12, 6, .1);
+    y_ = spin("originY", -1e12, 1e12, 6, .1);
+    yaw_ = spin("originYaw", -1e9, 1e9, 6, 1);
+    x_->setSuffix(" m"); y_->setSuffix(" m"); yaw_->setSuffix(" °");
+    yaw_->setToolTip("YAML의 origin[2]. 도 단위로 입력하고 라디안으로 저장합니다.");
+    origin->addRow("X", x_); origin->addRow("Y", y_); origin->addRow("Yaw", yaw_);
+    radLabel_ = new QLabel;
+    radLabel_->setObjectName("radians");
+    origin->addRow("YAML", radLabel_);
+    layout->addWidget(originGroup);
+
+    auto *advancedToggle = new QToolButton;
+    advancedToggle->setObjectName("advancedToggle");
+    advancedToggle->setText("점유 설정");
+    advancedToggle->setCheckable(true);
+    advancedToggle->setArrowType(Qt::RightArrow);
+    advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    layout->addWidget(advancedToggle);
+    auto *advanced = new QWidget;
+    auto *thresholds = new QFormLayout(advanced);
+    thresholds->setContentsMargins(0, 0, 0, 0);
+    free_ = spin("freeThreshold", .000001, .999999, 6, .01);
+    occupied_ = spin("occupiedThreshold", .000001, .999999, 6, .01);
+    thresholds->addRow("Free", free_); thresholds->addRow("Occupied", occupied_);
+    negate_ = new QComboBox;
+    negate_->setObjectName("negate");
+    negate_->addItems({"0 — 검정이 장애물", "1 — 흰색이 장애물"});
+    thresholds->addRow("Negate", negate_);
+    layout->addWidget(advanced);
+    advanced->hide();
+    connect(advancedToggle, &QToolButton::toggled, this, [advancedToggle, advanced](bool open) {
+        advanced->setVisible(open);
+        advancedToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+    });
+
+    metadataState_ = new QLabel;
+    metadataState_->setObjectName("metadataState");
+    metadataState_->setWordWrap(true);
+    layout->addWidget(metadataState_);
+    auto *buttons = new QHBoxLayout;
+    apply_ = new QPushButton("적용"); apply_->setObjectName("applyMetadata");
+    revert_ = new QPushButton("되돌리기"); revert_->setObjectName("revertMetadata");
+    buttons->addWidget(apply_); buttons->addWidget(revert_);
+    layout->addLayout(buttons);
+    connect(apply_, &QPushButton::clicked, this, [this] { applyMetadata(); });
+    connect(revert_, &QPushButton::clicked, this, &MainWindow::revertMetadata);
+    layout->addStretch();
+    paletteNote_ = new QLabel;
+    paletteNote_->setWordWrap(true);
+    paletteNote_->setObjectName("paletteStatus");
+    layout->addWidget(paletteNote_);
+    auto *axes = new QCheckBox("좌표축 표시");
+    axes->setChecked(true);
+    layout->addWidget(axes);
+    connect(axes, &QCheckBox::toggled, canvas_, &Canvas::setAxes);
     scroll->setWidget(panel);
-    for (auto *s : {resolution_, x_, y_, yaw_, free_, occupied_}) connect(s, &QDoubleSpinBox::valueChanged, this, [this, s] { markField(s->objectName()); });
+    for (auto *box : {resolution_, x_, y_, yaw_, free_, occupied_})
+        connect(box, &QDoubleSpinBox::valueChanged, this, [this, box] { markField(box->objectName()); });
     connect(negate_, &QComboBox::currentIndexChanged, this, [this] { markField("negate"); });
     return scroll;
 }
+
 void MainWindow::makeActions() {
     auto *file = menuBar()->addMenu("파일(&F)");
-    auto *newAction = file->addAction("새 지도…", this, &MainWindow::newMap); newAction->setShortcut(QKeySequence::New);
-    auto *openAction = file->addAction("열기…", this, &MainWindow::open); openAction->setShortcut(QKeySequence::Open);
-    auto *saveAction = file->addAction("저장", this, [this] { save(); }); saveAction->setShortcut(QKeySequence::Save);
-    auto *saveAs = file->addAction("다른 이름으로 저장…", this, [this] { save(true); }); saveAs->setShortcut(QKeySequence::SaveAs);
-    file->addSeparator(); auto *exit = file->addAction("종료", this, &QWidget::close); exit->setShortcut(QKeySequence::Quit);
+    newAction_ = file->addAction(style()->standardIcon(QStyle::SP_FileIcon), "새 지도", this, &MainWindow::newMap);
+    newAction_->setShortcut(QKeySequence::New);
+    openAction_ = file->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton), "열기", this, &MainWindow::open);
+    openAction_->setShortcut(QKeySequence::Open);
+    saveAction_ = file->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "저장", this, [this] { save(); });
+    saveAction_->setObjectName("saveAction"); saveAction_->setShortcut(QKeySequence::Save);
+    saveAsAction_ = file->addAction("다른 이름으로 저장", this, [this] { save(true); });
+    saveAsAction_->setShortcut(QKeySequence::SaveAs);
+    file->addSeparator();
+    auto *exit = file->addAction("종료", this, &QWidget::close); exit->setShortcut(QKeySequence::Quit);
+
     auto *edit = menuBar()->addMenu("편집(&E)");
-    auto *undo = doc_.undo()->createUndoAction(this, "실행 취소"); undo->setShortcut(QKeySequence::Undo); edit->addAction(undo);
-    auto *redo = doc_.undo()->createRedoAction(this, "다시 실행"); redo->setShortcuts(QKeySequence::keyBindings(QKeySequence::Redo)); edit->addAction(redo);
-    edit->addSeparator(); edit->addAction("이미지 회전…", this, &MainWindow::rotate);
-    auto *view = menuBar()->addMenu("보기(&V)");
-    view->addAction("화면에 맞추기", canvas_, &Canvas::fit); view->addAction("100%", canvas_, &Canvas::actualSize);
-    auto *in = view->addAction("확대", this, [this] { canvas_->zoom(1.25); }); in->setShortcut(QKeySequence::ZoomIn);
-    auto *out = view->addAction("축소", this, [this] { canvas_->zoom(.8); }); out->setShortcut(QKeySequence::ZoomOut);
-    auto *help = menuBar()->addMenu("도움말(&H)"); help->addAction("사용법", this, [this] {
-        QMessageBox::information(this, "Mapwright 사용법", "1. PGM 또는 YAML을 엽니다. PGM 단독도 열 수 있습니다.\n2. 펜 / 지우개 / 직선 / 사각형 / 채우기를 선택합니다.\n3. 세 가지 색과 굵기를 고릅니다.\n4. 원점, 각도, 해상도를 수정한 뒤 적용합니다. 저장 시에도 자동 적용됩니다.\n5. 저장은 현재 쌍, 다른 이름으로 저장은 새 이름의 쌍을 만듭니다.\n\n스포이드(I)로 지도 픽셀을 클릭하면 원래 값 그대로 펜과 지우개에 적용합니다.\n회색 샘플은 자동 보정하지 않으며, 자동값 복원 또는 다른 지도 열기로 초기화합니다.\n\n캔버스 단축키: B 펜 · E 지우개 · L 직선 · R 사각형 · G 채우기 · H 이동 · I 스포이드\n1 흰색 · 2 검정 · 3 회색 · [ ] 굵기 · F 화면 맞춤 · 0 100%\n휠 확대 · 가운데 버튼 또는 Space+드래그 이동 · Esc 획 취소\nCtrl (macOS Cmd)+Z 실행 취소 · Shift+Ctrl/Cmd+Z 다시 실행\n\n저장 전 .mapwright-backups 폴더에 기존 파일을 백업합니다.\n각 파일은 안전하게 교체하지만 두 파일의 교체 전체가 원자적이지는 않습니다.\n전원 중단 시 백업 original.yaml / original.pgm과 paths.txt로 복원할 수 있습니다.");
+    undoAction_ = edit->addAction(style()->standardIcon(QStyle::SP_ArrowBack), "실행 취소", this, &MainWindow::undoEdit);
+    undoAction_->setObjectName("undoAction"); undoAction_->setShortcut(QKeySequence::Undo);
+    redoAction_ = edit->addAction(style()->standardIcon(QStyle::SP_ArrowForward), "다시 실행", this, &MainWindow::redoEdit);
+    redoAction_->setObjectName("redoAction"); redoAction_->setShortcuts(QKeySequence::keyBindings(QKeySequence::Redo));
+
+    auto *map = menuBar()->addMenu("지도(&M)");
+    rotateAction_ = map->addAction("이미지 회전…", this, &MainWindow::rotate);
+    normalizeAction_ = map->addAction("3색으로 변환", this, [this] {
+        canvas_->finishEditing();
+        if (doc_.empty() || !applyMetadata()) return;
+        doc_.editImage(MapIO::trinary(doc_.image(), doc_.meta()), "3색 변환");
+        coordinates_->setText("3색으로 변환했습니다.");
     });
-    help->addAction("Mapwright 정보", this, [this] { QMessageBox::about(this, "Mapwright", "<h2>Mapwright 1.0</h2><p>PGM + YAML 자율주행 지도 편집기</p><p>C++17 · Qt 6 Widgets · yaml-cpp</p><p>Ubuntu / Windows / macOS용 소스와 빌드 설정 포함</p><p>MIT License · Qt / yaml-cpp 고지는 THIRD_PARTY_NOTICES.md 참고</p>"); });
-    // Single-letter shortcuts only apply to the canvas, never to number fields.
+
+    auto *view = menuBar()->addMenu("보기(&V)"); viewMenu_ = view;
+    fitAction_ = view->addAction("화면 맞춤", canvas_, &Canvas::fit);
+    actualAction_ = view->addAction("100%", canvas_, &Canvas::actualSize);
+    zoomInAction_ = view->addAction("확대", this, [this] { canvas_->zoom(1.25); });
+    zoomInAction_->setShortcut(QKeySequence::ZoomIn);
+    zoomOutAction_ = view->addAction("축소", this, [this] { canvas_->zoom(.8); });
+    zoomOutAction_->setShortcut(QKeySequence::ZoomOut);
+
+    auto *help = menuBar()->addMenu("도움말(&H)");
+    help->addAction("단축키", this, [this] {
+        QMessageBox::information(this, "단축키", "B  펜\nE  지우개\nL  직선\nR  사각형\nG  채우기\nH  이동\nI  스포이드\n\n1 / 2 / 3  흰색 / 검정 / 회색\n[ / ]  굵기 조절\nF  화면 맞춤\n0  100%\nEsc  그리는 중인 획 취소\n\n휠  확대·축소\n가운데 버튼 또는 Space+드래그  이동\n\nCtrl (macOS Cmd)+O  열기\nCtrl/Cmd+S  저장\nCtrl/Cmd+Shift+S  다른 이름으로 저장\nCtrl/Cmd+Z  실행 취소\nCtrl/Cmd+Shift+Z  다시 실행");
+    });
+    help->addAction("정보", this, [this] {
+        QMessageBox::about(this, "Map Editor", "<b>Map Editor 1.1</b><p>PGM / YAML 지도 편집기</p><p>Qt 6 · MIT License</p>");
+    });
+
     auto canvasKey = [this](const QString &key, auto callback) {
-        auto *a = new QAction(canvas_); a->setShortcut(QKeySequence(key)); a->setShortcutContext(Qt::WidgetShortcut); canvas_->addAction(a); connect(a, &QAction::triggered, this, callback);
+        auto *action = new QAction(canvas_);
+        action->setShortcut(QKeySequence(key)); action->setShortcutContext(Qt::WidgetShortcut);
+        canvas_->addAction(action); connect(action, &QAction::triggered, this, callback);
     };
     const QStringList keys{"B", "E", "L", "R", "G", "H", "I"};
     for (int i = 0; i < keys.size(); ++i) canvasKey(keys[i], [this, i] { tools_->button(i)->click(); });
     for (int i = 0; i < 3; ++i) canvasKey(QString::number(i + 1), [this, i] { chooseColor(i); });
     canvasKey("F", [this] { canvas_->fit(); }); canvasKey("0", [this] { canvas_->actualSize(); });
-    canvasKey("[", [this] { size_->setValue(size_->value() - 1); }); canvasKey("]", [this] { size_->setValue(size_->value() + 1); });
+    canvasKey("[", [this] { if (size_->isEnabled()) size_->setValue(size_->value() - 1); });
+    canvasKey("]", [this] { if (size_->isEnabled()) size_->setValue(size_->value() + 1); });
+}
+
+void MainWindow::selectTool(int tool) {
+    canvas_->finishEditing();
+    currentTool_ = tool;
+    if (tool <= Canvas::Fill) lastPaintTool_ = tool;
+    canvas_->setTool(Canvas::Tool(tool));
+    const int width = tool == Canvas::Eraser ? eraserSize_ : penSize_;
+    { QSignalBlocker block(size_); size_->setValue(width); }
+    canvas_->setBrushSize(width);
+    size_->setEnabled(tool == Canvas::Pen || tool == Canvas::Eraser || tool == Canvas::Line || tool == Canvas::Rectangle);
+    filled_->setEnabled(tool == Canvas::Rectangle);
+    eraser_->setEnabled(tool == Canvas::Eraser);
+    canvas_->setFocus();
+}
+
+void MainWindow::undoEdit() {
+    canvas_->finishEditing();
+    if (!pending_.isEmpty()) revertMetadata();
+    else doc_.undo()->undo();
+}
+void MainWindow::redoEdit() {
+    canvas_->finishEditing();
+    if (pending_.isEmpty()) doc_.undo()->redo();
+}
+void MainWindow::revertMetadata() {
+    pending_.clear(); refreshFields(); refresh();
 }
 void MainWindow::markField(const QString &key) {
-    if (syncing_) return;
-    pending_.insert(key); metadataState_->setText("미적용 변경 · 저장할 때 자동 적용"); apply_->setEnabled(!doc_.empty());
-    radLabel_->setText(QString("YAML 저장값: %1 rad").arg(yaw_->value() * Rad, 0, 'g', 9));
-    setWindowModified(true);
+    if (syncing_ || doc_.empty()) return;
+    const bool original = key == "negate" ? negate_->currentIndex() == negate_->property("baseline").toInt()
+        : findChild<QDoubleSpinBox *>(key)->value() == findChild<QDoubleSpinBox *>(key)->property("baseline").toDouble();
+    if (original) pending_.remove(key); else pending_.insert(key);
+    refresh();
 }
 void MainWindow::refreshFields() {
     if (!pending_.isEmpty()) return;
@@ -208,24 +402,40 @@ void MainWindow::refreshFields() {
     const auto &m = doc_.meta();
     resolution_->setValue(m.resolution); x_->setValue(m.x); y_->setValue(m.y); yaw_->setValue(m.yaw / Rad);
     free_->setValue(m.free); occupied_->setValue(m.occupied); negate_->setCurrentIndex(m.negate);
-    radLabel_->setText(QString("YAML 저장값: %1 rad").arg(m.yaw, 0, 'g', 9));
-    syncing_ = false; apply_->setEnabled(false); metadataState_->setText("속성이 지도에 반영되어 있습니다.");
-    refreshPalette();
+    for (auto *box : {resolution_, x_, y_, yaw_, free_, occupied_}) box->setProperty("baseline", box->value());
+    negate_->setProperty("baseline", negate_->currentIndex());
+    syncing_ = false;
+}
+MapIO::Metadata MainWindow::editedMetadata() const {
+    auto meta = doc_.meta();
+    if (pending_.contains("resolution")) meta.resolution = resolution_->value();
+    if (pending_.contains("originX")) meta.x = x_->value();
+    if (pending_.contains("originY")) meta.y = y_->value();
+    if (pending_.contains("originYaw")) meta.yaw = yaw_->value() * Rad;
+    if (pending_.contains("freeThreshold")) meta.free = free_->value();
+    if (pending_.contains("occupiedThreshold")) meta.occupied = occupied_->value();
+    if (pending_.contains("negate")) meta.negate = negate_->currentIndex();
+    return meta;
 }
 void MainWindow::refreshPalette() {
-    const auto &m = doc_.meta(); const int unknown = grayBrushValue();
-    const auto p = MapIO::probability(unknown, m);
-    const QString grayRole = p > m.occupied ? "장애물" : (p < m.free ? "빈 공간" : "미확인");
-    const QStringList labels{QString("흰색\n%1").arg(m.negate ? "장애물" : "빈 공간"), QString("검정\n%1").arg(m.negate ? "빈 공간" : "장애물"), "회색\n" + grayRole};
-    const QStringList shades{"#ffffff", "#111714", QColor(unknown, unknown, unknown).name()};
+    const auto &meta = doc_.meta();
+    const int gray = grayBrushValue();
+    const auto p = MapIO::probability(gray, meta);
+    const auto grayRole = p > meta.occupied ? "장애물" : (p < meta.free ? "빈 공간" : "미확인");
+    const QStringList shades{"#ffffff", "#000000", QColor(gray, gray, gray).name()};
+    const QStringList roles{meta.negate ? "장애물" : "빈 공간", meta.negate ? "빈 공간" : "장애물", grayRole};
+    const int values[]{255, 0, gray};
     for (int i = 0; i < 3; ++i) {
-        auto *b = colors_->button(i); b->setText(labels[i]);
-        b->setStyleSheet(QString("QPushButton { background:%1; color:%2; border:2px solid #a3b2aa; border-radius:8px; padding:5px 1px; font-size:11px; } QPushButton:checked { border:3px solid #13a478; }").arg(shades[i], i == 1 || (i == 2 && unknown < 120) ? "white" : "#17291f"));
+        auto *button = colors_->button(i);
+        button->setText(QString::number(values[i]));
+        button->setToolTip(QString("%1 — %2 (%3)").arg(QStringList{"흰색", "검정", "회색"}[i], roles[i]).arg(values[i]));
+        button->setStyleSheet(QString("QPushButton { background: %1; color: %2; border: 1px solid #8c8c8c; padding: 2px; } QPushButton:checked { border: 3px solid #397cbb; }")
+            .arg(shades[i], i == 1 || (i == 2 && gray < 120) ? "white" : "black"));
     }
-    paletteNote_->setText(QString("픽셀값 255 / 0 / %1\n%2").arg(unknown).arg(sampledGray_ >= 0 ? "스포이드 원본값 그대로 사용" : "회색은 현재 임계값에 맞춥니다."));
+    paletteNote_->setText(QString("회색 %1 (%2)%3").arg(gray).arg(grayRole).arg(sampledGray_ >= 0 ? " · 추출값" : ""));
     resetGray_->setVisible(sampledGray_ >= 0);
-    eraser_->setItemText(0, QString("회색 · %1").arg(unknown));
-    canvas_->setEraserGray(eraser_->currentIndex() == 0 ? unknown : (eraser_->currentIndex() == 1 ? 255 : 0));
+    eraser_->setItemText(0, QString("회색 %1").arg(gray));
+    canvas_->setEraserGray(eraser_->currentIndex() == 0 ? gray : (eraser_->currentIndex() == 1 ? 255 : 0));
     chooseColor(colorIndex_);
 }
 void MainWindow::chooseColor(int index) {
@@ -240,83 +450,117 @@ void MainWindow::sampleColor(int gray) {
     else { sampledGray_ = gray; colorIndex_ = 2; eraser_->setCurrentIndex(0); }
     refreshPalette();
     tools_->button(lastPaintTool_)->click();
-    coordinates_->setText(QString("스포이드: 픽셀값 %1 · 펜과 지우개에 원본값 적용").arg(gray));
+    coordinates_->setText(QString("추출값 %1").arg(gray));
 }
+
 void MainWindow::refresh() {
+    const bool empty = doc_.empty(), changed = doc_.dirty() || !pending_.isEmpty() || canvas_->isEditing();
     const auto name = doc_.map().yamlPath.isEmpty() ? "새 지도" : QFileInfo(doc_.map().yamlPath).fileName();
-    setWindowTitle((doc_.empty() ? "Mapwright" : name + " — Mapwright") + "[*]"); setWindowModified(doc_.dirty() || !pending_.isEmpty());
-    fileLabel_->setText(doc_.empty() ? "열린 지도 없음" : name + (doc_.dirty() || !pending_.isEmpty() ? "  •" : ""));
+    setWindowTitle((empty ? "Map Editor" : name + " - Map Editor") + "[*]");
+    setWindowModified(changed);
+    fileLabel_->setText(empty ? "열린 지도 없음" : name);
     fileLabel_->setToolTip(doc_.map().yamlPath);
-    if (!doc_.empty()) details_->setText(QString("%1 × %2 px   ·   %3 × %4 m   ·   %5").arg(doc_.image().width()).arg(doc_.image().height()).arg(doc_.image().width() * doc_.meta().resolution, 0, 'f', 2).arg(doc_.image().height() * doc_.meta().resolution, 0, 'f', 2).arg(doc_.map().hasYaml ? "PGM + YAML" : "PGM 단독 · YAML 생성 예정"));
+    details_->setText(empty ? QString() : QString("%1 × %2 px\n%3 × %4 m%5").arg(doc_.image().width()).arg(doc_.image().height())
+        .arg(doc_.image().width() * doc_.meta().resolution, 0, 'f', 2).arg(doc_.image().height() * doc_.meta().resolution, 0, 'f', 2)
+        .arg(doc_.map().hasYaml ? "" : "\nYAML 없음 (저장 시 생성)"));
+    toolPanel_->setEnabled(!empty);
+    propertiesPanel_->setEnabled(!empty);
+    saveAction_->setEnabled(!empty);
+    saveAsAction_->setEnabled(!empty);
+    undoAction_->setEnabled(!pending_.isEmpty() || doc_.undo()->canUndo() || canvas_->isEditing());
+    redoAction_->setEnabled(pending_.isEmpty() && doc_.undo()->canRedo());
+    undoAction_->setToolTip(pending_.isEmpty() ? doc_.undo()->undoText() : "적용 전 속성 변경 취소");
+    for (auto *action : {rotateAction_, normalizeAction_, fitAction_, actualAction_, zoomInAction_, zoomOutAction_}) action->setEnabled(!empty);
     refreshFields();
+    const auto meta = editedMetadata();
+    const auto error = MapIO::validate(meta);
+    radLabel_->setText(QString::number(meta.yaw, 'g', 10) + " rad");
+    metadataState_->setText(pending_.isEmpty() ? "" : (error.isEmpty() ? "변경됨 (적용 전)" : error));
+    metadataState_->setStyleSheet(error.isEmpty() ? "" : "color: #a63030;");
+    apply_->setEnabled(!empty && !pending_.isEmpty() && error.isEmpty());
+    revert_->setEnabled(!pending_.isEmpty());
+    refreshPalette();
 }
+
 bool MainWindow::applyMetadata() {
-    for (auto *s : {resolution_, x_, y_, yaw_, free_, occupied_}) s->interpretText();
-    if (pending_.isEmpty()) return true;
-    if (doc_.empty()) { pending_.clear(); refreshFields(); return true; }
-    auto m = doc_.meta();
-    if (pending_.contains("resolution")) m.resolution = resolution_->value();
-    if (pending_.contains("originX")) m.x = x_->value();
-    if (pending_.contains("originY")) m.y = y_->value();
-    if (pending_.contains("originYaw")) m.yaw = yaw_->value() * Rad;
-    if (pending_.contains("freeThreshold")) m.free = free_->value();
-    if (pending_.contains("occupiedThreshold")) m.occupied = occupied_->value();
-    if (pending_.contains("negate")) m.negate = negate_->currentIndex();
-    try { doc_.editMetadata(m); pending_.clear(); refreshFields(); refresh(); return true; }
-    catch (const std::exception &e) { report(e); return false; }
+    canvas_->finishEditing();
+    for (auto *box : {resolution_, x_, y_, yaw_, free_, occupied_}) box->interpretText();
+    if (pending_.isEmpty() || doc_.empty()) return true;
+    try {
+        doc_.editMetadata(editedMetadata());
+        pending_.clear(); refresh();
+        return true;
+    } catch (const std::exception &error) { report(error); return false; }
 }
-void MainWindow::report(const std::exception &e) { QMessageBox::critical(this, "작업을 완료할 수 없습니다", QString::fromUtf8(e.what())); }
+void MainWindow::report(const std::exception &error) { QMessageBox::critical(this, "Map Editor", QString::fromUtf8(error.what())); }
 void MainWindow::open() {
-    const auto path = QFileDialog::getOpenFileName(this, "PGM / YAML 지도 열기", QSettings().value("lastFolder").toString(), "지도 (*.yaml *.yml *.pgm *.PGM *.YAML *.YML);;모든 파일 (*)");
+    const auto path = QFileDialog::getOpenFileName(this, "지도 열기", QSettings().value("lastFolder", QDir::homePath()).toString(),
+        "지도 (*.yaml *.yml *.pgm *.PGM *.YAML *.YML);;모든 파일 (*)");
     if (!path.isEmpty()) openPath(path);
 }
 void MainWindow::openPath(const QString &path) {
     if (!maybeSave()) return;
-    try { doc_.open(path); QSettings().setValue("lastFolder", QFileInfo(path).absolutePath()); coordinates_->setText("지도를 열었습니다. 원본 픽셀 값은 그대로 유지됩니다."); }
-    catch (const std::exception &e) { report(e); }
+    try {
+        doc_.open(path);
+        QSettings().setValue("lastFolder", QFileInfo(path).absolutePath());
+        coordinates_->setText(QFileInfo(doc_.map().imagePath).fileName());
+    } catch (const std::exception &error) { report(error); }
 }
 void MainWindow::newMap() {
-    QDialog dialog(this); dialog.setWindowTitle("새 지도"); QFormLayout layout(&dialog);
-    QSpinBox width, height; width.setRange(1, 16000); height.setRange(1, 16000); width.setValue(800); height.setValue(600);
+    QDialog dialog(this); dialog.setWindowTitle("새 지도");
+    QFormLayout layout(&dialog);
+    QSpinBox width, height;
+    width.setRange(1, 16000); height.setRange(1, 16000); width.setValue(800); height.setValue(600);
     auto *resolution = spin("newResolution", .000001, 1000, 6, .01); resolution->setValue(.05); resolution->setSuffix(" m/px");
     layout.addRow("가로 (px)", &width); layout.addRow("세로 (px)", &height); layout.addRow("해상도", resolution);
-    QLabel note("최대 32 Mi 픽셀 · 회색(미확인)으로 시작합니다."); layout.addRow(&note);
     QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel); layout.addRow(&buttons);
-    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept); connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     if (dialog.exec() != QDialog::Accepted || !maybeSave()) return;
-    try { doc_.newMap(width.value(), height.value(), resolution->value()); } catch (const std::exception &e) { report(e); }
+    try { doc_.newMap(width.value(), height.value(), resolution->value()); }
+    catch (const std::exception &error) { report(error); }
 }
 void MainWindow::rotate() {
     if (doc_.empty() || !applyMetadata()) return;
-    bool ok = false;
-    const double degrees = QInputDialog::getDouble(this, "이미지 자체 회전", "시계 방향 각도 (°)\n원점과 yaw도 함께 보정합니다. 빈 모서리는 회색으로 채웁니다.\n90° 배수가 아닌 회전은 최근접 픽셀 재배치를 사용합니다.", 90, -360, 360, 3, &ok);
-    if (ok) { try { doc_.rotateImage(degrees); canvas_->fit(); } catch (const std::exception &e) { report(e); } }
+    bool accepted = false;
+    const double degrees = QInputDialog::getDouble(this, "이미지 회전", "시계 방향 (°). 원점과 Yaw도 함께 보정합니다.", 90, -360, 360, 3, &accepted);
+    if (!accepted) return;
+    try { doc_.rotateImage(degrees); canvas_->fit(); }
+    catch (const std::exception &error) { report(error); }
 }
 bool MainWindow::save(bool as) {
     if (doc_.empty() || !applyMetadata()) return false;
     QString path;
     if (as || doc_.map().yamlPath.isEmpty()) {
-        const auto suggested = doc_.map().yamlPath.isEmpty() ? QSettings().value("lastFolder").toString() + "/map.yaml" : QFileInfo(doc_.map().yamlPath).dir().filePath(QFileInfo(doc_.map().yamlPath).completeBaseName() + "_edited.yaml");
-        path = QFileDialog::getSaveFileName(this, "지도 쌍 저장 · 같은 이름의 .pgm도 생성됩니다", suggested, "YAML 지도 (*.yaml *.yml)");
+        const auto suggested = doc_.map().yamlPath.isEmpty()
+            ? QDir(QSettings().value("lastFolder", QDir::homePath()).toString()).filePath("map.yaml")
+            : QFileInfo(doc_.map().yamlPath).dir().filePath(QFileInfo(doc_.map().yamlPath).completeBaseName() + "_edited.yaml");
+        path = QFileDialog::getSaveFileName(this, "지도 저장 (YAML + PGM)", suggested, "YAML 지도 (*.yaml *.yml)");
         if (path.isEmpty()) return false;
         if (QFileInfo(path).suffix().isEmpty()) path += ".yaml";
         const auto pgm = QFileInfo(path).dir().filePath(QFileInfo(path).completeBaseName() + ".pgm");
-        if (QFile::exists(pgm) && !MapIO::sameFilePath(path, doc_.map().yamlPath) && QMessageBox::question(this, "기존 PGM 덮어쓰기", "같은 이름의 PGM 파일도 백업 후 덮어씁니다.\n" + pgm, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return false;
+        if (QFile::exists(pgm) && !MapIO::sameFilePath(path, doc_.map().yamlPath) &&
+            QMessageBox::question(this, "PGM 덮어쓰기", pgm + "\n\n기존 PGM 파일도 덮어쓸까요?", QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) return false;
     }
     try {
-        const auto saved = doc_.save(path); QSettings().setValue("lastFolder", QFileInfo(saved.yamlPath).absolutePath());
-        coordinates_->setText("PGM + YAML 저장 완료" + (saved.backupDirectory.isEmpty() ? QString() : " · 기존 파일 백업됨"));
-        coordinates_->setToolTip(saved.backupDirectory); return true;
-    } catch (const std::exception &e) { report(e); return false; }
+        const auto saved = doc_.save(path);
+        QSettings().setValue("lastFolder", QFileInfo(saved.yamlPath).absolutePath());
+        coordinates_->setText("저장: " + QFileInfo(saved.yamlPath).fileName());
+        coordinates_->setToolTip(saved.backupDirectory);
+        return true;
+    } catch (const std::exception &error) { report(error); return false; }
 }
 bool MainWindow::maybeSave() {
+    canvas_->finishEditing();
+    for (auto *box : {resolution_, x_, y_, yaw_, free_, occupied_}) box->interpretText();
     if (!doc_.dirty() && pending_.isEmpty()) return true;
-    const auto answer = QMessageBox::warning(this, "저장하지 않은 변경", "지도 또는 YAML 속성이 변경되었습니다. 저장할까요?", QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+    const auto answer = QMessageBox::warning(this, "저장하지 않은 변경", "변경 내용을 저장할까요?",
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
     if (answer == QMessageBox::Cancel) return false;
     if (answer == QMessageBox::Save) return save();
     return true;
 }
-void MainWindow::closeEvent(QCloseEvent *e) {
-    if (maybeSave()) { QSettings().setValue("windowGeometry", saveGeometry()); e->accept(); }
-    else e->ignore();
+void MainWindow::closeEvent(QCloseEvent *event) {
+    if (maybeSave()) { QSettings().setValue("windowGeometry", saveGeometry()); event->accept(); }
+    else event->ignore();
 }

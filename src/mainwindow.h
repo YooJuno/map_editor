@@ -7,8 +7,11 @@ class QPushButton;
 class QComboBox;
 class QLabel;
 class QSpinBox;
-class QSlider;
 class QButtonGroup;
+class QAction;
+class QCheckBox;
+class QDockWidget;
+class QMenu;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -22,6 +25,11 @@ private:
     QWidget *makeTools();
     QWidget *makeProperties();
     void makeActions();
+    void selectTool(int tool);
+    void undoEdit();
+    void redoEdit();
+    void revertMetadata();
+    MapIO::Metadata editedMetadata() const;
     void refresh();
     void refreshFields();
     void refreshPalette();
@@ -43,12 +51,20 @@ private:
     QComboBox *eraser_, *negate_;
     QDoubleSpinBox *resolution_, *x_, *y_, *yaw_, *free_, *occupied_;
     QSpinBox *size_;
-    QSlider *sizeSlider_;
+    QCheckBox *filled_;
+    QDockWidget *propertiesDock_;
+    QWidget *toolPanel_, *propertiesPanel_;
     QLabel *fileLabel_, *details_, *coordinates_, *zoomLabel_, *radLabel_, *paletteNote_, *metadataState_;
-    QPushButton *apply_, *resetGray_;
+    QPushButton *apply_, *revert_, *resetGray_;
+    QAction *saveAction_, *saveAsAction_, *undoAction_, *redoAction_;
+    QAction *newAction_, *openAction_;
+    QMenu *viewMenu_;
+    QAction *rotateAction_, *normalizeAction_, *fitAction_, *actualAction_, *zoomInAction_, *zoomOutAction_;
     QSet<QString> pending_;
     bool syncing_ = false;
     int colorIndex_ = 1;
     int sampledGray_ = -1;
     int lastPaintTool_ = Canvas::Pen;
+    int currentTool_ = Canvas::Pen;
+    int penSize_ = 8, eraserSize_ = 20;
 };

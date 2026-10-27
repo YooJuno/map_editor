@@ -162,6 +162,7 @@ MapIO::SaveResult Document::save(const QString &newPath) {
     const auto path = newPath.isEmpty() ? map_.yamlPath : newPath;
     const bool same = !map_.yamlPath.isEmpty() && MapIO::sameFilePath(path, map_.yamlPath);
     if (same && !diskMatches()) throw std::runtime_error("열어 둔 지도 파일이 외부에서 변경되었거나 삭제되었습니다. 다시 열거나 다른 이름으로 저장하세요.");
+    if (same && !dirty()) return {map_.yamlPath, map_.imagePath, {}};
     auto saved = MapIO::savePair(map_, path, same ? map_.imagePath : QString());
     map_.yamlPath = saved.yamlPath; map_.imagePath = saved.imagePath; map_.hasYaml = true;
     needsPair_ = false; historyBaselineDirty_ = false;
