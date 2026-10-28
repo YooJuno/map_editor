@@ -1,4 +1,5 @@
 #include "canvas.h"
+#include "icons.h"
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFocusEvent>
@@ -155,11 +156,18 @@ void Canvas::zoomAt(double factor, QPointF anchor) {
 }
 void Canvas::paintEvent(QPaintEvent *) {
     QPainter p(this);
-    p.fillRect(rect(), QColor("#55585c"));
+    p.fillRect(rect(), QColor("#303531"));
     if (base_->empty()) {
-        p.setPen(QColor("#e1e2e4"));
-        p.drawText(rect(), Qt::AlignCenter, QString("PGM / YAML 열기  ·  %1\n파일을 여기에 끌어 놓을 수도 있습니다.")
-            .arg(QKeySequence(QKeySequence::Open).toString(QKeySequence::NativeText)));
+        const int center = height() / 2;
+        Icons::get(Icons::Map, QColor("#8b9c88")).paint(&p, QRect(width() / 2 - 26, center - 88, 52, 52));
+        auto heading = font(); heading.setPointSizeF(16); heading.setWeight(QFont::Medium); p.setFont(heading);
+        p.setPen(QColor("#dce3d8"));
+        p.drawText(QRect(0, center - 12, width(), 34), Qt::AlignCenter, "지도를 열어 시작하세요");
+        auto body = font(); body.setPointSizeF(10); p.setFont(body); p.setPen(QColor("#9da996"));
+        p.drawText(QRect(0, center + 28, width(), 28), Qt::AlignCenter, "YAML 또는 PGM 파일을 여기에 끌어 놓으세요");
+        body.setPointSizeF(9); p.setFont(body); p.setPen(QColor("#788872"));
+        p.drawText(QRect(0, center + 66, width(), 24), Qt::AlignCenter,
+            QKeySequence(QKeySequence::Open).toString(QKeySequence::NativeText) + "  ·  지도 열기");
         return;
     }
     const auto &image = drawing_ && doc_ == base_ ? draft_ : base_->image();

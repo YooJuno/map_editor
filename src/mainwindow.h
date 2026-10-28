@@ -28,6 +28,7 @@ protected:
     void closeEvent(QCloseEvent *) override;
 private:
     QWidget *makeTools();
+    QWidget *makeToolRail();
     QWidget *makeProperties();
     QWidget *makeLayers();
     void makeActions();
@@ -69,8 +70,8 @@ private:
     QSpinBox *size_;
     QCheckBox *filled_;
     QDockWidget *propertiesDock_;
-    QWidget *toolPanel_, *propertiesPanel_;
-    QWidget *baseProperties_, *maskProperties_, *colorPanel_, *eraserPanel_;
+    QWidget *toolPanel_, *toolRail_, *propertiesPanel_;
+    QWidget *baseProperties_, *maskProperties_, *colorPanel_, *eraserPanel_, *brushPanel_, *layersPanel_;
     QComboBox *layer_;
     QSpinBox *speedPercent_;
     QSlider *opacity_;
@@ -78,6 +79,7 @@ private:
     QLabel *opacityLabel_, *maskHelp_, *speedLabel_, *geometryHint_;
     QPushButton *openMask_, *saveMask_, *closeMasks_, *clearMask_;
     QLabel *fileLabel_, *details_, *coordinates_, *zoomLabel_, *radLabel_, *paletteNote_, *metadataState_;
+    QLabel *documentTitle_, *documentState_, *toolTitle_, *toolContext_;
     QPushButton *apply_, *revert_, *resetGray_;
     QAction *saveAction_, *saveAsAction_, *undoAction_, *redoAction_;
     QAction *newAction_, *openAction_;

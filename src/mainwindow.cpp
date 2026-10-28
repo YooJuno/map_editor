@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "icons.h"
 #include <QAction>
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -19,6 +20,7 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QMenuBar>
+#include <QPainter>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
@@ -28,6 +30,7 @@
 #include <QSlider>
 #include <QStatusBar>
 #include <QStyle>
+#include <QStyleOptionButton>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -50,6 +53,34 @@ protected:
     }
 };
 
+class DrawingButton : public QPushButton {
+public:
+    using QPushButton::QPushButton;
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QStyleOptionButton option; initStyleOption(&option);
+        option.text.clear(); option.icon = QIcon();
+        QPainter painter(this);
+        style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
+        icon().paint(&painter, QRect((width() - 22) / 2, 8, 22, 22), Qt::AlignCenter,
+            isEnabled() ? QIcon::Normal : QIcon::Disabled);
+        auto labelFont = font(); labelFont.setPointSizeF(qMax(8., font().pointSizeF() - 1.));
+        painter.setFont(labelFont);
+        painter.setPen(isEnabled() ? QColor(isChecked() ? "#345646" : "#69716b") : QColor("#b1b5af"));
+        painter.drawText(QRect(0, 32, width(), 19), Qt::AlignHCenter | Qt::AlignTop, text());
+    }
+};
+
+QLabel *sectionTitle(const QString &text) {
+    auto *label = new QLabel(text); label->setObjectName("sectionTitle"); return label;
+}
+
+QToolButton *actionButton(QAction *action, const QString &name = {}) {
+    auto *button = new QToolButton; button->setDefaultAction(action);
+    button->setObjectName(name); button->setIconSize({18, 18});
+    return button;
+}
+
 QDoubleSpinBox *spin(const QString &name, double min, double max, int digits, double step) {
     auto *box = new NumberBox;
     box->setObjectName(name);
@@ -58,74 +89,98 @@ QDoubleSpinBox *spin(const QString &name, double min, double max, int digits, do
     box->setSingleStep(step);
     box->setKeyboardTracking(false);
     box->setLocale(QLocale::c());
-    box->setMinimumWidth(115);
+    box->setMinimumWidth(125);
     return box;
 }
 
 QFrame *separator() {
     auto *line = new QFrame;
     line->setFrameShape(QFrame::VLine);
-    line->setFrameShadow(QFrame::Sunken);
+    line->setObjectName("toolbarDivider");
+    line->setFixedWidth(1);
+    line->setFixedHeight(22);
     return line;
+}
+QFrame *rule() {
+    auto *line = new QFrame; line->setFrameShape(QFrame::HLine); line->setObjectName("sectionRule"); return line;
 }
 }
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepout_(this, true), speedMask_(this, true), canvas_(new Canvas(&doc_)) {
     setObjectName("mainWindow");
-    setMinimumSize(1020, 640);
-    resize(1280, 800);
-    setWindowIcon(style()->standardIcon(QStyle::SP_FileIcon));
+    setMinimumSize(1060, 700);
+    resize(1400, 900);
+    setWindowIcon(Icons::get(Icons::Map));
     setCentralWidget(canvas_);
     canvas_->setMaskLayers(&keepout_, &speedMask_);
     makeActions();
 
-    auto *fileBar = addToolBar("파일 및 보기");
+    auto *fileBar = addToolBar("파일");
     fileBar->setObjectName("fileToolbar");
     fileBar->setMovable(false);
-    fileBar->setIconSize({16, 16});
+    fileBar->setIconSize({18, 18});
     fileBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    fileBar->addAction(newAction_);
+    auto *brand = new QWidget; brand->setObjectName("brand");
+    auto *brandRow = new QHBoxLayout(brand); brandRow->setContentsMargins(6, 0, 24, 0); brandRow->setSpacing(10);
+    auto *brandIcon = new QLabel; brandIcon->setPixmap(Icons::get(Icons::Map, QColor("#496b57")).pixmap(26, 26));
+    auto *brandLabel = new QLabel("Map Editor"); brandLabel->setObjectName("brandLabel");
+    brandRow->addWidget(brandIcon); brandRow->addWidget(brandLabel); fileBar->addWidget(brand);
+    fileBar->addWidget(actionButton(newAction_));
     fileBar->addAction(openAction_);
-    fileBar->addAction(saveAction_);
-    fileBar->addAction(saveAsAction_);
-    fileBar->addSeparator();
-    fileBar->addAction(undoAction_);
-    fileBar->addAction(redoAction_);
-    fileBar->addSeparator();
-    fileBar->addAction(fitAction_);
-    fileBar->addAction(actualAction_);
-    fileBar->addAction(zoomOutAction_);
-    fileBar->addAction(zoomInAction_);
+    auto *leftSpace = new QWidget; leftSpace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred); fileBar->addWidget(leftSpace);
+    documentTitle_ = new QLabel; documentTitle_->setObjectName("documentTitle");
+    documentTitle_->setMaximumWidth(300); fileBar->addWidget(documentTitle_);
+    documentState_ = new QLabel; documentState_->setObjectName("documentState"); fileBar->addWidget(documentState_);
+    auto *rightSpace = new QWidget; rightSpace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred); fileBar->addWidget(rightSpace);
+    fileBar->addWidget(actionButton(undoAction_)); fileBar->addWidget(actionButton(redoAction_));
+    fileBar->addWidget(separator());
+    auto *saveButton = actionButton(saveAction_, "primarySave");
+    saveButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    auto *saveMenu = new QMenu(saveButton); saveMenu->addAction(saveAsAction_);
+    saveMenu->addAction("모두 저장", this, [this] { saveAll(); });
+    saveButton->setMenu(saveMenu); saveButton->setPopupMode(QToolButton::MenuButtonPopup);
+    fileBar->addWidget(saveButton);
 
     addToolBarBreak();
     auto *drawBar = addToolBar("그리기");
     drawBar->setObjectName("drawingToolbar");
     drawBar->setMovable(false);
+    drawBar->setFixedHeight(48);
     toolPanel_ = makeTools();
     drawBar->addWidget(toolPanel_);
-    addToolBarBreak();
-    auto *layers = addToolBar("레이어");
-    layers->setObjectName("layersToolbar"); layers->setMovable(false);
-    layers->addWidget(makeLayers());
+    auto *rail = new QToolBar("도구", this); rail->setObjectName("toolsRail"); rail->setMovable(false);
+    rail->setAllowedAreas(Qt::LeftToolBarArea); addToolBar(Qt::LeftToolBarArea, rail);
+    toolRail_ = makeToolRail(); rail->addWidget(toolRail_);
 
-    propertiesDock_ = new QDockWidget("지도 속성", this);
+    propertiesDock_ = new QDockWidget("속성 패널", this);
     propertiesDock_->setObjectName("propertiesDock");
     propertiesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-    propertiesDock_->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+    propertiesDock_->setFeatures(QDockWidget::DockWidgetClosable);
+    auto *inspectorHeader = new QWidget; inspectorHeader->setObjectName("inspectorHeader");
+    auto *inspectorRow = new QHBoxLayout(inspectorHeader); inspectorRow->setContentsMargins(20, 12, 12, 12);
+    inspectorRow->addWidget(sectionTitle("문서")); inspectorRow->addStretch();
+    auto *hideInspector = new QToolButton; hideInspector->setObjectName("hideInspector"); hideInspector->setIcon(Icons::get(Icons::Chevron));
+    hideInspector->setToolTip("속성 패널 접기 · 보기 메뉴에서 다시 열기"); inspectorRow->addWidget(hideInspector);
+    propertiesDock_->setTitleBarWidget(inspectorHeader);
+    connect(hideInspector, &QToolButton::clicked, propertiesDock_, &QWidget::hide);
     propertiesDock_->setWidget(makeProperties());
     addDockWidget(Qt::RightDockWidgetArea, propertiesDock_);
-    resizeDocks({propertiesDock_}, {270}, Qt::Horizontal);
+    resizeDocks({propertiesDock_}, {304}, Qt::Horizontal);
     viewMenu_->addAction(propertiesDock_->toggleViewAction());
 
-    coordinates_ = new QLabel("준비");
-    coordinates_->setMargin(3);
+    coordinates_ = new QLabel("YAML / PGM 지도 편집"); coordinates_->setObjectName("coordinates");
+    coordinates_->setMargin(5);
     coordinates_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     statusBar()->addPermanentWidget(coordinates_, 1);
-    statusBar()->setMinimumHeight(25);
+    statusBar()->setMinimumHeight(34);
     zoomLabel_ = new QLabel;
-    zoomLabel_->setMinimumWidth(55);
-    zoomLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    statusBar()->addPermanentWidget(zoomLabel_);
+    zoomLabel_->setObjectName("zoomLabel"); zoomLabel_->setMinimumWidth(48);
+    zoomLabel_->setAlignment(Qt::AlignCenter);
+    auto *zoomPanel = new QWidget; auto *zoomRow = new QHBoxLayout(zoomPanel); zoomRow->setContentsMargins(0, 0, 8, 0); zoomRow->setSpacing(3);
+    zoomRow->addWidget(actionButton(zoomOutAction_)); zoomRow->addWidget(zoomLabel_);
+    zoomRow->addWidget(actionButton(zoomInAction_)); zoomRow->addWidget(actionButton(fitAction_));
+    auto *actual = actionButton(actualAction_); actual->setToolButtonStyle(Qt::ToolButtonTextOnly); zoomRow->addWidget(actual);
+    statusBar()->addPermanentWidget(zoomPanel);
 
     connect(canvas_, &Canvas::zoomChanged, this, [this](double scale) {
         zoomLabel_->setText(QString::number(scale * 100, 'f', scale < .1 ? 1 : 0) + "%");
@@ -172,55 +227,71 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     refresh();
 }
 
-QWidget *MainWindow::makeTools() {
+QWidget *MainWindow::makeToolRail() {
     auto *panel = new QWidget;
-    auto *row = new QHBoxLayout(panel);
-    row->setContentsMargins(4, 2, 4, 2);
-    row->setSpacing(4);
+    auto *column = new QVBoxLayout(panel);
+    column->setContentsMargins(8, 12, 8, 12); column->setSpacing(5);
     tools_ = new QButtonGroup(this);
     const QStringList labels{"펜", "지우개", "직선", "사각형", "채우기", "이동", "스포이드", "다각형"};
     const QStringList keys{"B", "E", "L", "R", "G", "H", "I", "P"};
     const QStringList names{"penTool", "eraserTool", "lineTool", "rectangleTool", "fillTool", "handTool", "pickerTool", "polygonTool"};
+    const Icons::Name icons[]{Icons::Pen, Icons::Eraser, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon};
     for (int i = 0; i < labels.size(); ++i) {
-        auto *button = new QPushButton(labels[i]);
+        auto *button = new DrawingButton(labels[i]);
         button->setObjectName(names[i]);
+        button->setProperty("drawingTool", true); button->setIcon(Icons::get(icons[i]));
         button->setCheckable(true);
         button->setToolTip(labels[i] + " (" + keys[i] + ")");
-        button->setMinimumHeight(26);
+        button->setAccessibleName(labels[i]); button->setFixedSize(52, 56);
         tools_->addButton(button, i);
-        row->addWidget(button);
+        if (i == Canvas::Hand) {
+            auto *divider = new QFrame; divider->setFrameShape(QFrame::HLine); divider->setObjectName("railDivider");
+            column->addSpacing(6); column->addWidget(divider); column->addSpacing(6);
+        }
+        column->addWidget(button);
         if (i == Canvas::Pen) button->setChecked(true);
     }
     connect(tools_, &QButtonGroup::idClicked, this, &MainWindow::selectTool);
+    column->addStretch();
+    return panel;
+}
+
+QWidget *MainWindow::makeTools() {
+    auto *panel = new QWidget;
+    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto *row = new QHBoxLayout(panel);
+    row->setContentsMargins(12, 4, 12, 4); row->setSpacing(12);
+    toolTitle_ = new QLabel("펜"); toolTitle_->setObjectName("toolTitle"); toolTitle_->setMinimumWidth(52);
+    row->addWidget(toolTitle_);
     row->addWidget(separator());
     colorPanel_ = new QWidget;
     auto *colorRow = new QHBoxLayout(colorPanel_); colorRow->setContentsMargins(0, 0, 0, 0); colorRow->setSpacing(4);
-    colorRow->addWidget(new QLabel("색"));
     colors_ = new QButtonGroup(this);
     for (int i = 0; i < 3; ++i) {
         auto *button = new QPushButton;
         button->setObjectName("color" + QString::number(i));
         button->setCheckable(true);
-        button->setFixedSize(39, 26);
+        button->setProperty("swatch", true); button->setFixedSize(88, 32); button->setIconSize({16, 16});
         colors_->addButton(button, i);
         colorRow->addWidget(button);
     }
     connect(colors_, &QButtonGroup::idClicked, this, [this](int index) { chooseColor(index); canvas_->setFocus(); });
-    resetGray_ = new QPushButton("초기화");
+    resetGray_ = new QPushButton("회색 복원");
     resetGray_->setObjectName("resetGray");
     resetGray_->setToolTip("회색을 YAML 임계값 기준으로 되돌리기");
     colorRow->addWidget(resetGray_);
     row->addWidget(colorPanel_);
     connect(resetGray_, &QPushButton::clicked, this, [this] { sampledGray_ = -1; refreshPalette(); canvas_->setFocus(); });
-    row->addWidget(separator());
-    row->addWidget(new QLabel("굵기"));
+    brushPanel_ = new QWidget;
+    auto *brushRow = new QHBoxLayout(brushPanel_); brushRow->setContentsMargins(0, 0, 0, 0); brushRow->setSpacing(8);
+    brushRow->addWidget(new QLabel("굵기"));
     size_ = new QSpinBox;
     size_->setObjectName("brushSize");
     size_->setRange(1, 512);
     size_->setValue(penSize_);
     size_->setSuffix(" px");
-    size_->setFixedWidth(82);
-    row->addWidget(size_);
+    size_->setFixedWidth(88);
+    brushRow->addWidget(size_); row->addWidget(brushPanel_);
     connect(size_, &QSpinBox::valueChanged, this, [this](int value) {
         if (currentTool_ == Canvas::Eraser) eraserSize_ = value;
         else penSize_ = value;
@@ -232,37 +303,46 @@ QWidget *MainWindow::makeTools() {
     filled_->setEnabled(false);
     row->addWidget(filled_);
     connect(filled_, &QCheckBox::toggled, canvas_, &Canvas::setFilled);
-    row->addWidget(separator());
     eraserPanel_ = new QWidget;
     auto *eraserRow = new QHBoxLayout(eraserPanel_); eraserRow->setContentsMargins(0, 0, 0, 0);
     eraserRow->addWidget(new QLabel("지우개 색"));
     eraser_ = new QComboBox;
     eraser_->setObjectName("eraserColor");
     eraser_->addItems({"회색", "흰색", "검정"});
-    eraser_->setMinimumWidth(90);
+    eraser_->setMinimumWidth(100);
     eraser_->setEnabled(false);
     eraserRow->addWidget(eraser_);
     row->addWidget(eraserPanel_);
     connect(eraser_, &QComboBox::currentIndexChanged, this, [this] { refreshPalette(); });
     row->addStretch();
+    toolContext_ = new QLabel; toolContext_->setObjectName("toolContext"); row->addWidget(toolContext_);
     return panel;
 }
 
 QWidget *MainWindow::makeLayers() {
     auto *panel = new QWidget;
-    auto *row = new QHBoxLayout(panel); row->setContentsMargins(4, 2, 4, 2); row->setSpacing(8);
-    row->addWidget(new QLabel("편집 레이어"));
+    auto *column = new QVBoxLayout(panel); column->setContentsMargins(0, 0, 0, 0); column->setSpacing(10);
+    column->addWidget(sectionTitle("레이어"));
     layer_ = new QComboBox; layer_->setObjectName("activeLayer");
-    layer_->addItems({"원본 지도", "진입 금지 마스크", "속도 제한 마스크"}); layer_->setMinimumWidth(165);
-    row->addWidget(layer_);
+    layer_->addItems({"원본 지도", "진입 금지 마스크", "속도 제한 마스크"});
+    layer_->setItemIcon(0, Icons::get(Icons::Map));
+    layer_->setItemIcon(1, Icons::get(Icons::Polygon, QColor("#b56b61")));
+    layer_->setItemIcon(2, Icons::get(Icons::Polygon, QColor("#6586b0")));
+    layer_->setToolTip("편집할 지도 또는 필터 마스크를 선택합니다.");
+    column->addWidget(layer_);
     connect(layer_, &QComboBox::currentIndexChanged, this, &MainWindow::selectLayer);
-    keepoutVisible_ = new QCheckBox("진입 금지 표시"); keepoutVisible_->setObjectName("keepoutVisible"); keepoutVisible_->setChecked(true);
-    speedVisible_ = new QCheckBox("속도 제한 표시"); speedVisible_->setObjectName("speedVisible"); speedVisible_->setChecked(true);
-    row->addWidget(keepoutVisible_); row->addWidget(speedVisible_);
-    row->addWidget(new QLabel("불투명도"));
-    opacity_ = new QSlider(Qt::Horizontal); opacity_->setObjectName("maskOpacity"); opacity_->setRange(0, 100); opacity_->setValue(45); opacity_->setFixedWidth(105);
+    keepoutVisible_ = new QCheckBox("진입 금지"); keepoutVisible_->setObjectName("keepoutVisible"); keepoutVisible_->setChecked(true);
+    speedVisible_ = new QCheckBox("속도 제한"); speedVisible_->setObjectName("speedVisible"); speedVisible_->setChecked(true);
+    keepoutVisible_->setToolTip("빨강 마스크 표시"); speedVisible_->setToolTip("파랑 마스크 표시");
+    auto *visibilityRow = new QHBoxLayout; visibilityRow->setSpacing(16);
+    visibilityRow->addWidget(keepoutVisible_); visibilityRow->addWidget(speedVisible_); visibilityRow->addStretch();
+    column->addLayout(visibilityRow);
+    auto *row = new QHBoxLayout; row->setSpacing(10); row->addWidget(new QLabel("불투명도"));
+    opacity_ = new QSlider(Qt::Horizontal); opacity_->setObjectName("maskOpacity"); opacity_->setRange(0, 100); opacity_->setValue(45);
+    opacity_->setMinimumWidth(75);
     opacityLabel_ = new QLabel("45%"); opacityLabel_->setMinimumWidth(35);
     row->addWidget(opacity_); row->addWidget(opacityLabel_);
+    column->addLayout(row);
     connect(opacity_, &QSlider::valueChanged, this, [this](int value) {
         canvas_->setMaskOpacity(value / 100.); opacityLabel_->setText(QString::number(value) + "%"); refresh();
     });
@@ -272,7 +352,6 @@ QWidget *MainWindow::makeLayers() {
     };
     connect(keepoutVisible_, &QCheckBox::toggled, this, visibility);
     connect(speedVisible_, &QCheckBox::toggled, this, visibility);
-    row->addStretch();
     return panel;
 }
 
@@ -280,28 +359,39 @@ QWidget *MainWindow::makeProperties() {
     auto *scroll = new QScrollArea;
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setWidgetResizable(true);
-    scroll->setMinimumWidth(250);
+    scroll->setMinimumWidth(294);
+    scroll->setObjectName("inspectorScroll");
     auto *panel = new QWidget;
+    panel->setObjectName("inspectorPanel");
     propertiesPanel_ = panel;
     auto *layout = new QVBoxLayout(panel);
-    layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(12);
+    layout->setContentsMargins(20, 8, 20, 18);
+    layout->setSpacing(16);
     fileLabel_ = new QLabel;
+    fileLabel_->setObjectName("fileName");
     fileLabel_->setWordWrap(true);
     fileLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(fileLabel_);
     details_ = new QLabel;
+    details_->setObjectName("documentDetails");
     layout->addWidget(details_);
+    layout->addWidget(rule());
+    layersPanel_ = makeLayers(); layout->addWidget(layersPanel_);
+    layout->addWidget(rule());
     baseProperties_ = new QWidget;
-    auto *baseLayout = new QVBoxLayout(baseProperties_); baseLayout->setContentsMargins(0, 0, 0, 0); baseLayout->setSpacing(12);
+    auto *baseLayout = new QVBoxLayout(baseProperties_); baseLayout->setContentsMargins(0, 0, 0, 0); baseLayout->setSpacing(14);
+    baseLayout->addWidget(sectionTitle("지도 좌표"));
     auto *resolutionForm = new QFormLayout;
+    resolutionForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     resolution_ = spin("resolution", .000000001, 1000000, 9, .01);
     resolution_->setSuffix(" m/px");
     resolutionForm->addRow("해상도", resolution_);
     baseLayout->addLayout(resolutionForm);
-    auto *originGroup = new QGroupBox("원점 (Origin)");
+    auto *originGroup = new QGroupBox("원점 · Origin");
     originGroup->setToolTip("지도의 왼쪽 아래 모서리에 해당하는 월드 좌표");
     auto *origin = new QFormLayout(originGroup);
+    origin->setContentsMargins(0, 20, 0, 0); origin->setVerticalSpacing(10);
+    origin->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     x_ = spin("originX", -1e12, 1e12, 6, .1);
     y_ = spin("originY", -1e12, 1e12, 6, .1);
     yaw_ = spin("originYaw", -1e9, 1e9, 6, 1);
@@ -322,7 +412,8 @@ QWidget *MainWindow::makeProperties() {
     advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     baseLayout->addWidget(advancedToggle);
     auto *advanced = new QWidget;
-    auto *thresholds = new QFormLayout(advanced);
+    auto *thresholds = new QFormLayout(advanced); thresholds->setVerticalSpacing(10);
+    thresholds->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     thresholds->setContentsMargins(0, 0, 0, 0);
     free_ = spin("freeThreshold", .000001, .999999, 6, .01);
     occupied_ = spin("occupiedThreshold", .000001, .999999, 6, .01);
@@ -344,6 +435,7 @@ QWidget *MainWindow::makeProperties() {
     baseLayout->addWidget(metadataState_);
     auto *buttons = new QHBoxLayout;
     apply_ = new QPushButton("적용"); apply_->setObjectName("applyMetadata");
+    apply_->setProperty("primary", true);
     revert_ = new QPushButton("되돌리기"); revert_->setObjectName("revertMetadata");
     buttons->addWidget(apply_); buttons->addWidget(revert_);
     baseLayout->addLayout(buttons);
@@ -352,17 +444,19 @@ QWidget *MainWindow::makeProperties() {
     layout->addWidget(baseProperties_);
     maskProperties_ = new QWidget;
     auto *maskLayout = new QVBoxLayout(maskProperties_); maskLayout->setContentsMargins(0, 0, 0, 0); maskLayout->setSpacing(10);
+    maskLayout->addWidget(sectionTitle("구역 편집"));
     maskHelp_ = new QLabel; maskHelp_->setWordWrap(true); maskLayout->addWidget(maskHelp_);
     speedLabel_ = new QLabel("새 구역 속도 (최대 속도 대비)"); speedLabel_->setWordWrap(true); maskLayout->addWidget(speedLabel_);
     speedPercent_ = new QSpinBox; speedPercent_->setObjectName("speedPercent"); speedPercent_->setRange(1, 100); speedPercent_->setValue(30); speedPercent_->setSuffix(" %"); maskLayout->addWidget(speedPercent_);
     connect(speedPercent_, &QSpinBox::valueChanged, this, [this] { if (activeLayer_ == 2) canvas_->setGray(speedPercent_->value()); refreshPalette(); });
     openMask_ = new QPushButton("마스크 열기…"); openMask_->setObjectName("openMask"); maskLayout->addWidget(openMask_);
     saveMask_ = new QPushButton("마스크 저장"); saveMask_->setObjectName("saveMask"); maskLayout->addWidget(saveMask_);
+    saveMask_->setProperty("primary", true);
     clearMask_ = new QPushButton("모든 구역 지우기"); clearMask_->setObjectName("clearMask"); maskLayout->addWidget(clearMask_);
     connect(openMask_, &QPushButton::clicked, this, &MainWindow::openMask);
     connect(saveMask_, &QPushButton::clicked, this, [this] { save(); });
     connect(clearMask_, &QPushButton::clicked, this, &MainWindow::clearMask);
-    auto *instructions = new QLabel("다각형: 점을 찍고 Enter로 완료\nEsc로 취소 · 지우개로 구역 삭제"); instructions->setWordWrap(true); maskLayout->addWidget(instructions);
+    auto *instructions = new QLabel("점을 찍고 Enter로 다각형 완성\nEsc 취소 · 지우개로 구역 삭제"); instructions->setObjectName("instructions"); instructions->setWordWrap(true); maskLayout->addWidget(instructions);
     layout->addWidget(maskProperties_);
     closeMasks_ = new QPushButton("마스크 모두 닫기"); closeMasks_->setObjectName("closeMasks"); layout->addWidget(closeMasks_);
     connect(closeMasks_, &QPushButton::clicked, this, &MainWindow::closeMasks);
@@ -371,7 +465,7 @@ QWidget *MainWindow::makeProperties() {
     paletteNote_->setWordWrap(true);
     paletteNote_->setObjectName("paletteStatus");
     layout->addWidget(paletteNote_);
-    auto *axes = new QCheckBox("좌표축 표시");
+    auto *axes = new QCheckBox("좌표축 표시"); axes->setObjectName("showAxes");
     axes->setChecked(true);
     layout->addWidget(axes);
     connect(axes, &QCheckBox::toggled, canvas_, &Canvas::setAxes);
@@ -384,11 +478,11 @@ QWidget *MainWindow::makeProperties() {
 
 void MainWindow::makeActions() {
     auto *file = menuBar()->addMenu("파일(&F)");
-    newAction_ = file->addAction(style()->standardIcon(QStyle::SP_FileIcon), "새 지도", this, &MainWindow::newMap);
+    newAction_ = file->addAction(Icons::get(Icons::New), "새 지도", this, &MainWindow::newMap);
     newAction_->setShortcut(QKeySequence::New);
-    openAction_ = file->addAction(style()->standardIcon(QStyle::SP_DialogOpenButton), "원본 열기", this, &MainWindow::open);
+    openAction_ = file->addAction(Icons::get(Icons::Open), "지도 열기", this, &MainWindow::open);
     openAction_->setShortcut(QKeySequence::Open);
-    saveAction_ = file->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton), "저장", this, [this] { save(); });
+    saveAction_ = file->addAction(Icons::get(Icons::Save, QColor("#426437")), "저장", this, [this] { save(); });
     saveAction_->setObjectName("saveAction"); saveAction_->setShortcut(QKeySequence::Save);
     saveAsAction_ = file->addAction("다른 이름으로 저장", this, [this] { save(true); });
     saveAsAction_->setShortcut(QKeySequence::SaveAs);
@@ -397,9 +491,9 @@ void MainWindow::makeActions() {
     auto *exit = file->addAction("종료", this, &QWidget::close); exit->setShortcut(QKeySequence::Quit);
 
     auto *edit = menuBar()->addMenu("편집(&E)");
-    undoAction_ = edit->addAction(style()->standardIcon(QStyle::SP_ArrowBack), "실행 취소", this, &MainWindow::undoEdit);
+    undoAction_ = edit->addAction(Icons::get(Icons::Undo), "실행 취소", this, &MainWindow::undoEdit);
     undoAction_->setObjectName("undoAction"); undoAction_->setShortcut(QKeySequence::Undo);
-    redoAction_ = edit->addAction(style()->standardIcon(QStyle::SP_ArrowForward), "다시 실행", this, &MainWindow::redoEdit);
+    redoAction_ = edit->addAction(Icons::get(Icons::Redo), "다시 실행", this, &MainWindow::redoEdit);
     redoAction_->setObjectName("redoAction"); redoAction_->setShortcuts(QKeySequence::keyBindings(QKeySequence::Redo));
 
     auto *map = menuBar()->addMenu("지도(&M)");
@@ -412,11 +506,11 @@ void MainWindow::makeActions() {
     });
 
     auto *view = menuBar()->addMenu("보기(&V)"); viewMenu_ = view;
-    fitAction_ = view->addAction("화면 맞춤", canvas_, &Canvas::fit);
+    fitAction_ = view->addAction(Icons::get(Icons::Fit), "화면 맞춤", canvas_, &Canvas::fit);
     actualAction_ = view->addAction("100%", canvas_, &Canvas::actualSize);
-    zoomInAction_ = view->addAction("확대", this, [this] { canvas_->zoom(1.25); });
+    zoomInAction_ = view->addAction(Icons::get(Icons::Plus), "확대", this, [this] { canvas_->zoom(1.25); });
     zoomInAction_->setShortcut(QKeySequence::ZoomIn);
-    zoomOutAction_ = view->addAction("축소", this, [this] { canvas_->zoom(.8); });
+    zoomOutAction_ = view->addAction(Icons::get(Icons::Minus), "축소", this, [this] { canvas_->zoom(.8); });
     zoomOutAction_->setShortcut(QKeySequence::ZoomOut);
 
     auto *help = menuBar()->addMenu("도움말(&H)");
@@ -444,6 +538,8 @@ void MainWindow::selectTool(int tool) {
     if (tool == Canvas::Polygon && activeLayer_ == 0) return;
     canvas_->finishEditing();
     currentTool_ = tool;
+    const QStringList labels{"펜", "지우개", "직선", "사각형", "채우기", "이동", "스포이드", "다각형"};
+    toolTitle_->setText(labels.value(tool));
     if (tool <= Canvas::Fill || tool == Canvas::Polygon) lastPaintTool_ = tool;
     canvas_->setTool(Canvas::Tool(tool));
     const int width = tool == Canvas::Eraser ? eraserSize_ : penSize_;
@@ -453,6 +549,7 @@ void MainWindow::selectTool(int tool) {
     filled_->setEnabled(tool == Canvas::Rectangle);
     eraser_->setEnabled(tool == Canvas::Eraser);
     canvas_->setFilled(activeLayer_ > 0 || filled_->isChecked());
+    refresh();
     canvas_->setFocus();
 }
 
@@ -514,10 +611,13 @@ void MainWindow::refreshPalette() {
     const int values[]{255, 0, gray};
     for (int i = 0; i < 3; ++i) {
         auto *button = colors_->button(i);
-        button->setText(QString::number(values[i]));
+        button->setText(QStringList{"흰색", "검정", "회색"}[i]);
         button->setToolTip(QString("%1 — %2 (%3)").arg(QStringList{"흰색", "검정", "회색"}[i], roles[i]).arg(values[i]));
-        button->setStyleSheet(QString("QPushButton { background: %1; color: %2; border: 1px solid #8c8c8c; padding: 2px; } QPushButton:checked { border: 3px solid #397cbb; }")
-            .arg(shades[i], i == 1 || (i == 2 && gray < 120) ? "white" : "black"));
+        QPixmap swatch(32, 32); swatch.fill(Qt::transparent);
+        QPainter painter(&swatch); painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QPen(QColor("#aeb7a6"), 1.5)); painter.setBrush(QColor(shades[i]));
+        painter.drawEllipse(QRectF(2, 2, 28, 28)); painter.end();
+        button->setIcon(QIcon(swatch));
     }
     paletteNote_->setText(QString("회색 %1 (%2)%3").arg(gray).arg(grayRole).arg(sampledGray_ >= 0 ? " · 추출값" : ""));
     resetGray_->setVisible(sampledGray_ >= 0);
@@ -642,16 +742,27 @@ void MainWindow::refresh() {
     setWindowModified(changed);
     fileLabel_->setText(empty ? "열린 지도 없음" : name);
     fileLabel_->setToolTip(document->map().yamlPath);
-    details_->setText(empty ? QString() : QString("%1 × %2 px\n%3 × %4 m%5").arg(doc_.image().width()).arg(doc_.image().height())
+    documentTitle_->setText(empty ? "" : documentTitle_->fontMetrics().elidedText(name, Qt::ElideMiddle, 260));
+    documentTitle_->setToolTip(document->map().yamlPath);
+    documentState_->setText(empty ? "" : changed ? "수정됨" : "저장됨");
+    toolContext_->setText(mask ? (activeLayer_ == 1 ? "진입 금지 구역" : QString("최대 속도의 %1%").arg(speedPercent_->value())) : "");
+    details_->setText(empty ? QString("지도를 열면 레이어와 좌표를\n여기에서 조정할 수 있습니다.") : QString("%1 × %2 px\n%3 × %4 m%5").arg(doc_.image().width()).arg(doc_.image().height())
         .arg(doc_.image().width() * doc_.meta().resolution, 0, 'f', 2).arg(doc_.image().height() * doc_.meta().resolution, 0, 'f', 2)
         .arg(document->map().hasYaml ? "" : "\nYAML 없음 (저장 시 생성)"));
     const bool visible = !mask || ((activeLayer_ == 1 ? keepoutVisible_->isChecked() : speedVisible_->isChecked()) && opacity_->value() > 0);
     toolPanel_->setEnabled(!empty && visible);
+    for (int i = 0; i <= Canvas::Polygon; ++i) tools_->button(i)->setEnabled(!empty && (visible || i == Canvas::Hand));
     propertiesPanel_->setEnabled(!empty);
     layer_->setEnabled(!empty);
-    baseProperties_->setVisible(!mask); maskProperties_->setVisible(mask);
-    colorPanel_->setVisible(!mask); eraserPanel_->setVisible(!mask); filled_->setVisible(!mask);
-    tools_->button(Canvas::Polygon)->setVisible(mask); tools_->button(Canvas::Polygon)->setEnabled(mask);
+    baseProperties_->setVisible(!empty && !mask); maskProperties_->setVisible(!empty && mask);
+    layersPanel_->setVisible(!empty); paletteNote_->setVisible(!empty);
+    findChild<QCheckBox *>("showAxes")->setVisible(!empty);
+    for (auto *line : propertiesPanel_->findChildren<QFrame *>("sectionRule")) line->setVisible(!empty);
+    colorPanel_->setVisible(!mask && currentTool_ != Canvas::Hand && currentTool_ != Canvas::Picker && currentTool_ != Canvas::Eraser);
+    eraserPanel_->setVisible(!mask && currentTool_ == Canvas::Eraser);
+    filled_->setVisible(!mask && currentTool_ == Canvas::Rectangle);
+    brushPanel_->setVisible(currentTool_ == Canvas::Pen || currentTool_ == Canvas::Eraser || currentTool_ == Canvas::Line || currentTool_ == Canvas::Rectangle);
+    tools_->button(Canvas::Polygon)->setVisible(mask); tools_->button(Canvas::Polygon)->setEnabled(!empty && mask && visible);
     for (auto *field : {resolution_, x_, y_, yaw_}) field->setEnabled(!hasMasks());
     geometryHint_->setVisible(hasMasks());
     closeMasks_->setVisible(hasMasks());
@@ -678,6 +789,7 @@ void MainWindow::refresh() {
     const auto error = MapIO::validate(meta);
     radLabel_->setText(QString::number(meta.yaw, 'g', 10) + " rad");
     metadataState_->setText(pending_.isEmpty() ? "" : (error.isEmpty() ? "변경됨 (적용 전)" : error));
+    metadataState_->setVisible(!pending_.isEmpty());
     metadataState_->setStyleSheet(error.isEmpty() ? "" : "color: #a63030;");
     apply_->setEnabled(!empty && !pending_.isEmpty() && error.isEmpty());
     revert_->setEnabled(!pending_.isEmpty());
