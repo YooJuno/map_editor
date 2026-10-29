@@ -240,6 +240,8 @@ yaml-cpp 0.8 이상이 설치되어 있지 않으면 CMake가 고정된 0.8.0 �
 
 [Releases](https://github.com/YooJuno/map_editor/releases/latest)에서 OS에 맞는 파일을
 내려받아 압축을 풀어 사용합니다. Qt 라이브러리와 예제 지도를 포함합니다.
+앱 창·작업 표시줄과 Windows 실행 파일·macOS 앱 번들에 전용 아이콘을 포함합니다.
+Linux를 CMake로 설치하면 앱 메뉴용 아이콘도 함께 설치합니다.
 
 | 환경 | 배포 파일 | 실행 |
 | --- | --- | --- |
@@ -250,6 +252,8 @@ yaml-cpp 0.8 이상이 설치되어 있지 않으면 CMake가 고정된 0.8.0 �
 
 Linux/macOS의 `.tar.gz`는 실행 권한과 Qt 링크를 보존합니다. `SHA256SUMS`에서 다운로드한
 파일의 SHA-256 값을 확인할 수 있습니다. 배포 서명과 macOS notarization은 포함하지 않습니다.
+
+현재는 APT 저장소나 `.deb`를 제공하지 않으므로 `sudo apt install mapwright`로 설치할 수 없습니다.
 
 ## 자동 빌드·배포
 
@@ -292,6 +296,11 @@ cmake --install build --prefix "$PWD/dist"
 `src/i18n.*`와 `resources/i18n.json`에 번역을 내장하므로 별도 번역 패키지나 네트워크가 필요 없습니다.
 `tests/test_i18n.cpp`는 언어 전환 중 편집 상태 보존을, `tests/test_i18n_catalog.py`는 번역 누락과
 치환 변수 일치를 검사합니다.
+
+앱 아이콘 원본은 `resources/mapwright.svg`입니다. PNG·ICO·ICNS를 다시 만들려면 개발 환경에
+`scripts/icon-requirements.txt`를 설치한 뒤 `python scripts/generate_icons.py`를 실행합니다.
+아이콘 생성용 Python 라이브러리는 앱 실행과 일반 빌드에 필요하지 않습니다.
+CI는 Windows의 실제 실행 파일 리소스, macOS 번들·ICNS 디코딩, Linux 설치 경로를 확인합니다.
 
 [PGM 규격](https://netpbm.sourceforge.net/doc/pgm.html) ·
 [Nav2 map I/O](https://api.nav2.org/nav2-jazzy/html/map__io_8cpp_source.html) ·

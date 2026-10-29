@@ -70,6 +70,9 @@ jobs:
         run: ctest --test-dir build --output-on-failure --timeout 60
       - name: Collect runtime
         run: cmake --install build --prefix "${{ github.workspace }}/dist"
+      - name: Verify native application icon
+        shell: bash
+        run: python scripts/verify_native_icon.py --root dist --platform "$MAPEDITOR_PLATFORM"
       - name: Preserve SDK licenses
         shell: bash
         run: |

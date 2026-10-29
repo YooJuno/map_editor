@@ -7,6 +7,19 @@
 
 // Small, consistent outline icons rendered by Qt; no platform icon theme or SVG plugin required.
 namespace Icons {
+inline QIcon application() {
+    static const QIcon icon = [] {
+        QIcon result;
+#ifdef Q_OS_MACOS
+        result.addFile(":/icons/mapwright-macos.png", QSize(1024, 1024));
+#else
+        for (int size : {16, 24, 32, 48, 64, 128, 256, 512, 1024})
+            result.addFile(size == 128 ? QString(":/mapwright.png") : QString(":/icons/mapwright-%1.png").arg(size), QSize(size, size));
+#endif
+        return result;
+    }();
+    return icon;
+}
 enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin, Moon, Sun, Globe };
 inline QIcon get(Name name, QColor color = {}) {
     if (!color.isValid()) color = QColor(Theme::isDark() ? "#c5cbd4" : "#535d6c");

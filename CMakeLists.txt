@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Mapwright VERSION 1.6.0 LANGUAGES CXX)
+project(Mapwright VERSION 1.6.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -39,8 +39,17 @@ else()
 endif()
 qt_add_executable(mapwright WIN32 MACOSX_BUNDLE src/main.cpp src/mainwindow.cpp resources/resources.qrc)
 target_link_libraries(mapwright PRIVATE mapwright_core)
+if(WIN32)
+  enable_language(RC)
+  target_sources(mapwright PRIVATE resources/mapwright.rc)
+  target_include_directories(mapwright PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+elseif(APPLE)
+  set_source_files_properties(resources/mapwright.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+  target_sources(mapwright PRIVATE resources/mapwright.icns)
+  set_target_properties(mapwright PROPERTIES MACOSX_BUNDLE_ICON_FILE mapwright.icns)
+endif()
 set_target_properties(mapwright PROPERTIES
-  MACOSX_BUNDLE_BUNDLE_NAME Mapwright
+  MACOSX_BUNDLE_BUNDLE_NAME "Map Editor"
   MACOSX_BUNDLE_GUI_IDENTIFIER io.mapwright.editor
   MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
   MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
@@ -57,6 +66,11 @@ install(DIRECTORY licenses DESTINATION share/mapwright)
 if(UNIX AND NOT APPLE)
   install(FILES resources/mapwright.desktop DESTINATION share/applications)
   install(FILES resources/mapwright.png DESTINATION share/icons/hicolor/128x128/apps)
+  foreach(icon_size IN ITEMS 16 24 32 48 64 256 512 1024)
+    install(FILES resources/icons/mapwright-${icon_size}.png
+      DESTINATION share/icons/hicolor/${icon_size}x${icon_size}/apps RENAME mapwright.png)
+  endforeach()
+  install(FILES resources/mapwright.svg DESTINATION share/icons/hicolor/scalable/apps)
 endif()
 option(MAPWRIGHT_DEPLOY_RUNTIME "Bundle Qt runtime libraries (Qt >= 6.7)" OFF)
 if(MAPWRIGHT_DEPLOY_RUNTIME)

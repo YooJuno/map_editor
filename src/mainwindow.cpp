@@ -117,7 +117,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     setObjectName("mainWindow");
     setMinimumSize(1060, 700);
     resize(1400, 900);
-    setWindowIcon(Icons::get(Icons::Map));
+    setWindowIcon(Icons::application());
     setCentralWidget(canvas_);
     canvas_->setMaskLayers(&keepout_, &speedMask_);
     makeActions();
@@ -131,7 +131,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     fileBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     auto *brand = new QWidget; brand->setObjectName("brand");
     auto *brandRow = new QHBoxLayout(brand); brandRow->setContentsMargins(6, 0, 24, 0); brandRow->setSpacing(10);
-    auto *brandIcon = new QLabel; brandIcon->setPixmap(Icons::get(Icons::Map, QColor("#abb9cc")).pixmap(26, 26));
+    auto *brandIcon = new QLabel; brandIcon->setPixmap(Icons::application().pixmap(26, 26));
     brandIcon->setObjectName("brandIcon");
     auto *brandLabel = new QLabel("Map Editor"); brandLabel->setObjectName("brandLabel");
     brandRow->addWidget(brandIcon); brandRow->addWidget(brandLabel); fileBar->addWidget(brand);
@@ -304,8 +304,8 @@ void MainWindow::refreshThemeIcons() {
     themeButton_->setToolTip(dark ? I18n::text("다크 모드 · 테마 선택") : I18n::text("라이트 모드 · 테마 선택"));
     languageButton_->setIcon(Icons::get(Icons::Globe));
     for (auto *action : findChild<QMenu *>("languageMenu")->actions()) action->setChecked(action->data().toString() == I18n::language());
-    setWindowIcon(Icons::get(Icons::Map));
-    findChild<QLabel *>("brandIcon")->setPixmap(Icons::get(Icons::Map, QColor(dark ? "#abb9cc" : "#5d708a")).pixmap(26, 26));
+    setWindowIcon(Icons::application());
+    findChild<QLabel *>("brandIcon")->setPixmap(Icons::application().pixmap(26, 26));
     findChild<QToolButton *>("hideInspector")->setIcon(Icons::get(Icons::Chevron));
     findChild<QToolButton *>("cancelPolygon")->setIcon(Icons::get(Icons::Close));
     const Icons::Name toolIcons[]{Icons::Pen, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon};

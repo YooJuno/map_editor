@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "theme.h"
 #include "i18n.h"
+#include "icons.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFile>
@@ -14,6 +15,8 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("Mapwright"); QCoreApplication::setApplicationName("Mapwright"); QCoreApplication::setApplicationVersion(MAPWRIGHT_VERSION);
     QGuiApplication::setApplicationDisplayName("Map Editor");
+    QGuiApplication::setDesktopFileName("mapwright");
+    app.setWindowIcon(Icons::application());
     app.setStyle("Fusion");
     const auto families = QFontDatabase::families();
     for (const auto &family : {QString("Noto Sans CJK KR"), QString("Malgun Gothic"), QString("Apple SD Gothic Neo"), QString("Noto Sans")}) {
