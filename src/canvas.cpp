@@ -148,6 +148,41 @@ void Canvas::setCropSelection(QRect area) {
     if (clipped == cropSelection_) return;
     cropSelection_ = clipped; emit cropChanged(cropSelection_); update();
 }
+Qt::Edges Canvas::cropEdgesAt(QPointF position) const {
+    if (cropSelection_.isEmpty()) return {};
+    const QRectF area(screenPoint(QPointF(cropSelection_.topLeft())), QSizeF(cropSelection_.size()) * scale_);
+    const QPointF corners[]{area.topLeft(), area.topRight(), area.bottomRight(), area.bottomLeft()};
+    const Qt::Edges cornersEdges[]{Qt::LeftEdge | Qt::TopEdge, Qt::RightEdge | Qt::TopEdge,
+        Qt::RightEdge | Qt::BottomEdge, Qt::LeftEdge | Qt::BottomEdge};
+    Qt::Edges result; double distance = 9.;
+    for (int i = 0; i < 4; ++i) {
+        const auto d = QLineF(corners[i], position).length();
+        if (d <= distance) { distance = d; result = cornersEdges[i]; }
+    }
+    if (result) return result;
+    distance = 7.;
+    auto edge = [&](Qt::Edge side, double d, bool alongSegment) {
+        if (alongSegment && d <= distance) { distance = d; result = side; }
+    };
+    const bool verticalSpan = position.y() >= area.top() && position.y() <= area.bottom();
+    const bool horizontalSpan = position.x() >= area.left() && position.x() <= area.right();
+    edge(Qt::LeftEdge, std::abs(position.x() - area.left()), verticalSpan);
+    edge(Qt::RightEdge, std::abs(position.x() - area.right()), verticalSpan);
+    edge(Qt::TopEdge, std::abs(position.y() - area.top()), horizontalSpan);
+    edge(Qt::BottomEdge, std::abs(position.y() - area.bottom()), horizontalSpan);
+    return result;
+}
+Qt::CursorShape Canvas::cropResizeCursor(Qt::Edges edges) {
+    const bool horizontal = edges.testFlag(Qt::LeftEdge) || edges.testFlag(Qt::RightEdge);
+    const bool vertical = edges.testFlag(Qt::TopEdge) || edges.testFlag(Qt::BottomEdge);
+    if (horizontal && vertical) return edges.testFlag(Qt::LeftEdge) == edges.testFlag(Qt::TopEdge) ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
+    return horizontal ? Qt::SizeHorCursor : vertical ? Qt::SizeVerCursor : Qt::CrossCursor;
+}
+void Canvas::updateCropCursor(QPointF position) {
+    const auto edges = cropEdgesAt(position);
+    if (edges) setCursor(cropResizeCursor(edges));
+    else setCursor(cropSelection_ != base_->image().rect() && cropSelection_.contains(pixelPoint(position)) ? Qt::SizeAllCursor : Qt::CrossCursor);
+}
 bool Canvas::undoPolygonPoint() {
     if (tool_ != Polygon || !drawing_ || polygon_.isEmpty()) return false;
     polygon_.removeLast();
@@ -249,6 +284,10 @@ void Canvas::paintEvent(QPaintEvent *) {
         p.setPen(Qt::NoPen); p.setBrush(QColor("#e6edf7"));
         for (const auto corner : {selection.topLeft(), selection.topRight(), selection.bottomLeft(), selection.bottomRight()})
             p.drawRect(QRectF(corner - QPointF(3, 3), QSizeF(6, 6)));
+        if (selection.width() > 24) for (double y : {selection.top(), selection.bottom()})
+            p.drawRect(QRectF(selection.center().x() - 4, y - 2, 8, 4));
+        if (selection.height() > 24) for (double x : {selection.left(), selection.right()})
+            p.drawRect(QRectF(x - 2, selection.center().y() - 4, 4, 8));
     }
     if (tool_ == Polygon && drawing_ && !polygon_.isEmpty()) {
         p.save(); p.translate(offset_); p.scale(scale_, scale_);
@@ -300,14 +339,11 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     }
     if (e->button() != Qt::LeftButton || !editableVisible()) return;
     if (tool_ == Crop) {
-        cropStart_ = pixelPoint(e->position()); selectingCrop_ = true; movingCrop_ = resizingCrop_ = false; cropBeforeDrag_ = cropSelection_;
+        cropStart_ = pixelPoint(e->position()); selectingCrop_ = true; movingCrop_ = false; cropBeforeDrag_ = cropSelection_;
+        cropResizeEdges_ = cropEdgesAt(e->position());
+        if (cropResizeEdges_) { setCursor(cropResizeCursor(cropResizeEdges_)); return; }
         if (!cropSelection_.isEmpty()) {
-            const QRectF area(cropSelection_);
-            const QPointF corners[]{area.topLeft(), area.topRight(), area.bottomRight(), area.bottomLeft()};
-            for (int i = 0; i < 4; ++i) if (QLineF(screenPoint(QPointF(corners[i])), e->position()).length() <= 9) {
-                cropResizeAnchor_ = corners[(i + 2) % 4]; resizingCrop_ = true; return;
-            }
-            if (cropSelection_ != base_->image().rect() && cropSelection_.contains(cropStart_)) { movingCrop_ = true; return; }
+            if (cropSelection_ != base_->image().rect() && cropSelection_.contains(cropStart_)) { movingCrop_ = true; setCursor(Qt::SizeAllCursor); return; }
         }
         if (!insideImage(e->position())) { selectingCrop_ = false; return; }
         setCropSelection(QRect(cropStart_, cropStart_)); return;
@@ -341,9 +377,17 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         auto point = pixelPoint(e->position());
         point.setX(qBound(0, point.x(), base_->image().width() - 1));
         point.setY(qBound(0, point.y(), base_->image().height() - 1));
-        if (resizingCrop_) {
-            const auto area = QRectF(cropResizeAnchor_, mapPoint(e->position())).normalized().toAlignedRect().intersected(base_->image().rect());
-            if (!area.isEmpty()) setCropSelection(area);
+        if (cropResizeEdges_) {
+            const auto pointer = mapPoint(e->position());
+            const int x = qRound(qBound(0., pointer.x(), double(base_->image().width())));
+            const int y = qRound(qBound(0., pointer.y(), double(base_->image().height())));
+            int left = cropBeforeDrag_.x(), top = cropBeforeDrag_.y();
+            int right = left + cropBeforeDrag_.width(), bottom = top + cropBeforeDrag_.height();
+            if (cropResizeEdges_.testFlag(Qt::LeftEdge)) left = qBound(0, x, right - 1);
+            if (cropResizeEdges_.testFlag(Qt::RightEdge)) right = qBound(left + 1, x, base_->image().width());
+            if (cropResizeEdges_.testFlag(Qt::TopEdge)) top = qBound(0, y, bottom - 1);
+            if (cropResizeEdges_.testFlag(Qt::BottomEdge)) bottom = qBound(top + 1, y, base_->image().height());
+            setCropSelection(QRect(left, top, right - left, bottom - top));
         } else if (movingCrop_) {
             const auto delta = point - cropStart_;
             const int x = qBound(0, cropBeforeDrag_.x() + delta.x(), base_->image().width() - cropBeforeDrag_.width());
@@ -370,20 +414,12 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         }
         last_ = current;
     }
-    if (tool_ == Crop && !selectingCrop_) {
-        auto cursor = Qt::CrossCursor;
-        if (cropSelection_ != base_->image().rect() && cropSelection_.contains(pixelPoint(e->position()))) cursor = Qt::SizeAllCursor;
-        const QRectF area(cropSelection_);
-        const QPointF corners[]{area.topLeft(), area.topRight(), area.bottomRight(), area.bottomLeft()};
-        for (int i = 0; i < 4 && !cropSelection_.isEmpty(); ++i)
-            if (QLineF(screenPoint(QPointF(corners[i])), e->position()).length() <= 9) cursor = i % 2 ? Qt::SizeBDiagCursor : Qt::SizeFDiagCursor;
-        setCursor(cursor);
-    }
+    if (tool_ == Crop && !selectingCrop_ && !panning_ && !space_) updateCropCursor(e->position());
     update();
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton && draggingOrigin_) { mouseMoveEvent(e); draggingOrigin_ = false; return; }
-    if (e->button() == Qt::LeftButton && selectingCrop_) { mouseMoveEvent(e); selectingCrop_ = false; return; }
+    if (e->button() == Qt::LeftButton && selectingCrop_) { mouseMoveEvent(e); selectingCrop_ = false; updateCropCursor(e->position()); return; }
     if (panning_ && (e->button() == Qt::MiddleButton || e->button() == Qt::LeftButton)) {
         panning_ = false; setCursor(tool_ == Hand || space_ ? Qt::OpenHandCursor : Qt::CrossCursor);
     }

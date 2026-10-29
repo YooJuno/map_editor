@@ -74,6 +74,9 @@ private:
     void finishPolygon();
     bool editableVisible() const;
     QSize displaySize() const;
+    Qt::Edges cropEdgesAt(QPointF position) const;
+    static Qt::CursorShape cropResizeCursor(Qt::Edges edges);
+    void updateCropCursor(QPointF position);
     Document *doc_;
     Document *base_;
     Document *keepout_ = nullptr, *speed_ = nullptr;
@@ -95,8 +98,8 @@ private:
     QRect cropSelection_;
     QPoint cropStart_;
     QRect cropBeforeDrag_;
-    bool movingCrop_ = false, resizingCrop_ = false;
-    QPointF cropResizeAnchor_;
+    bool movingCrop_ = false;
+    Qt::Edges cropResizeEdges_;
     bool originPreview_ = false, draggingOrigin_ = false;
     MapIO::Metadata originMeta_;
 };

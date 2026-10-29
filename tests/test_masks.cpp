@@ -252,6 +252,37 @@ private slots:
         window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(doc->meta() == originalMeta); QCOMPARE(doc->image(), original);
         window.close();
     }
+    void cropEdgesResizeOneAxis_data() {
+        QTest::addColumn<QPointF>("from"); QTest::addColumn<QPointF>("to");
+        QTest::addColumn<QRect>("expected"); QTest::addColumn<int>("cursor");
+        const int horizontal = Qt::SizeHorCursor, vertical = Qt::SizeVerCursor;
+        QTest::newRow("left-in") << QPointF(5.2, 9) << QPointF(8, 14.5) << QRect(8, 4, 15, 14) << horizontal;
+        QTest::newRow("left-out") << QPointF(5, 13) << QPointF(2, 7) << QRect(2, 4, 21, 14) << horizontal;
+        QTest::newRow("right-in") << QPointF(23.2, 10) << QPointF(20, 6) << QRect(5, 4, 15, 14) << horizontal;
+        QTest::newRow("right-out") << QPointF(23, 14) << QPointF(28, 8) << QRect(5, 4, 23, 14) << horizontal;
+        QTest::newRow("top-in") << QPointF(10, 3.8) << QPointF(19, 7) << QRect(5, 7, 18, 11) << vertical;
+        QTest::newRow("top-out") << QPointF(18, 4) << QPointF(10, 1) << QRect(5, 1, 18, 17) << vertical;
+        QTest::newRow("bottom-in") << QPointF(12, 18.2) << QPointF(18, 15) << QRect(5, 4, 18, 11) << vertical;
+        QTest::newRow("bottom-out") << QPointF(19, 18) << QPointF(10, 22) << QRect(5, 4, 18, 18) << vertical;
+        QTest::newRow("left-image-bound") << QPointF(5, 10) << QPointF(-1, 10) << QRect(0, 4, 23, 14) << horizontal;
+        QTest::newRow("right-image-bound") << QPointF(23, 10) << QPointF(33.5, 10) << QRect(5, 4, 27, 14) << horizontal;
+        QTest::newRow("top-image-bound") << QPointF(12, 4) << QPointF(12, -1) << QRect(5, 0, 18, 18) << vertical;
+        QTest::newRow("bottom-image-bound") << QPointF(12, 18) << QPointF(12, 25) << QRect(5, 4, 18, 20) << vertical;
+        QTest::newRow("left-minimum-width") << QPointF(5, 10) << QPointF(30, 10) << QRect(22, 4, 1, 14) << horizontal;
+        QTest::newRow("right-minimum-width") << QPointF(23, 10) << QPointF(1, 10) << QRect(5, 4, 1, 14) << horizontal;
+        QTest::newRow("top-minimum-height") << QPointF(12, 4) << QPointF(12, 22) << QRect(5, 17, 18, 1) << vertical;
+        QTest::newRow("bottom-minimum-height") << QPointF(12, 18) << QPointF(12, 1) << QRect(5, 4, 18, 1) << vertical;
+    }
+    void cropEdgesResizeOneAxis() {
+        QFETCH(QPointF, from); QFETCH(QPointF, to); QFETCH(QRect, expected); QFETCH(int, cursor);
+        Document doc; doc.replace(reference(), false); const auto original = doc.image().copy();
+        Canvas canvas(&doc); canvas.resize(800, 600); canvas.show(); QCoreApplication::processEvents(); canvas.fit();
+        canvas.setTool(Canvas::Crop); canvas.setCropSelection(QRect(5, 4, 18, 14));
+        QTest::mouseMove(&canvas, canvas.screenPoint(from).toPoint());
+        QCOMPARE(int(canvas.cursor().shape()), cursor);
+        rectangle(&canvas, from, to); QCOMPARE(canvas.cropSelection(), expected);
+        QCOMPARE(doc.image(), original); QVERIFY(!doc.dirty());
+    }
     void cropHandlesResizeAndMoveWithoutEditingPixels() {
         Document doc; doc.replace(reference(), false); Canvas canvas(&doc); canvas.resize(800, 600); canvas.show(); QCoreApplication::processEvents(); canvas.fit();
         canvas.setTool(Canvas::Crop); canvas.setCropSelection(QRect(4, 3, 16, 12));
