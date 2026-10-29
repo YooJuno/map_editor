@@ -6,8 +6,6 @@
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
-#include <QDialog>
-#include <QDialogButtonBox>
 #include <QDir>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
@@ -280,7 +278,7 @@ void MainWindow::refreshThemeIcons() {
     for (int i = 0; i <= Canvas::Polygon; ++i) tools_->button(i)->setIcon(Icons::get(toolIcons[i]));
     const Icons::Name navigationIcons[]{Icons::Map, Icons::Polygon, Icons::Polygon, Icons::Rotate, Icons::Crop, Icons::Origin};
     for (int i = 0; i < 6; ++i) workspaces_->button(i)->setIcon(Icons::get(navigationIcons[i], QColor(i == 1 ? (dark ? "#dba397" : "#b56b61") : i == 2 ? (dark ? "#a0bfe0" : "#6586b0") : (dark ? "#c5cbd4" : "#535d6c"))));
-    newAction_->setIcon(Icons::get(Icons::New)); openAction_->setIcon(Icons::get(Icons::Open));
+    openAction_->setIcon(Icons::get(Icons::Open));
     saveAction_->setIcon(Icons::get(Icons::Save, QColor(dark ? "#e1e7ef" : "#4b5f7b")));
     undoAction_->setIcon(Icons::get(Icons::Undo)); redoAction_->setIcon(Icons::get(Icons::Redo));
     fitAction_->setIcon(Icons::get(Icons::Fit)); zoomInAction_->setIcon(Icons::get(Icons::Plus)); zoomOutAction_->setIcon(Icons::get(Icons::Minus));
@@ -615,8 +613,6 @@ QWidget *MainWindow::makeProperties() {
 
 void MainWindow::makeActions() {
     auto *file = menuBar()->addMenu("파일(&F)");
-    newAction_ = file->addAction(Icons::get(Icons::New), "새 지도", this, &MainWindow::newMap);
-    newAction_->setShortcut(QKeySequence::New);
     openAction_ = file->addAction(Icons::get(Icons::Open), "지도 열기", this, &MainWindow::open);
     openAction_->setShortcut(QKeySequence::Open);
     saveAction_ = file->addAction(Icons::get(Icons::Save, QColor("#e1e7ef")), "저장", this, [this] { save(); });
@@ -949,7 +945,7 @@ void MainWindow::refresh() {
     auto *document = activeDocument();
     const bool empty = doc_.empty(), mask = activeLayer_ > 0, geometry = workspaceMode_ >= 3;
     const bool changed = doc_.dirty() || keepout_.dirty() || speedMask_.dirty() || !pending_.isEmpty() || canvas_->isEditing() || geometryPending();
-    const auto name = document->map().yamlPath.isEmpty() ? (mask ? "새 " + Mask::kindName(activeLayer_ == 1 ? Mask::Keepout : Mask::SpeedPercent) + " 마스크" : "새 지도") : QFileInfo(document->map().yamlPath).fileName();
+    const auto name = document->map().yamlPath.isEmpty() ? (mask ? "새 " + Mask::kindName(activeLayer_ == 1 ? Mask::Keepout : Mask::SpeedPercent) + " 마스크" : QFileInfo(document->map().imagePath).fileName()) : QFileInfo(document->map().yamlPath).fileName();
     setWindowTitle((empty ? "Map Editor" : name + " - Map Editor") + "[*]");
     setWindowModified(changed);
     fileLabel_->setText(empty ? "열린 지도 없음" : name);
@@ -1053,20 +1049,6 @@ void MainWindow::openPath(const QString &path) {
         QSettings().setValue("lastFolder", QFileInfo(path).absolutePath());
         coordinates_->setText(QFileInfo(doc_.map().imagePath).fileName());
     } catch (const std::exception &error) { report(error); }
-}
-void MainWindow::newMap() {
-    QDialog dialog(this); dialog.setWindowTitle("새 지도");
-    QFormLayout layout(&dialog);
-    QSpinBox width, height;
-    width.setRange(1, 16000); height.setRange(1, 16000); width.setValue(800); height.setValue(600);
-    auto *resolution = spin("newResolution", .000001, 1000, 6, .01); resolution->setValue(.05); resolution->setSuffix(" m/px");
-    layout.addRow("가로 (px)", &width); layout.addRow("세로 (px)", &height); layout.addRow("해상도", resolution);
-    QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel); layout.addRow(&buttons);
-    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    if (dialog.exec() != QDialog::Accepted || !maybeSave()) return;
-    try { doc_.newMap(width.value(), height.value(), resolution->value()); }
-    catch (const std::exception &error) { report(error); }
 }
 void MainWindow::rotate() {
     selectWorkspace(3);

@@ -54,7 +54,6 @@ private:
     void chooseColor(int index);
     void sampleColor(int gray);
     int grayBrushValue() const;
-    void newMap();
     void rotate();
     void open();
     bool save(bool as = false);
@@ -93,7 +92,7 @@ private:
     QLabel *documentTitle_, *documentState_, *toolTitle_, *toolContext_;
     QPushButton *apply_, *revert_, *resetGray_;
     QAction *saveAction_, *saveAsAction_, *undoAction_, *redoAction_;
-    QAction *newAction_, *openAction_;
+    QAction *openAction_;
     QAction *darkThemeAction_, *lightThemeAction_;
     QToolButton *themeButton_;
     QMenu *viewMenu_;
