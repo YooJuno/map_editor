@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFontDatabase>
 #include <QStyle>
+#include <QSettings>
 #include <QTimer>
 #include <cstdio>
 
@@ -13,12 +14,11 @@ int main(int argc, char **argv) {
     QCoreApplication::setOrganizationName("Mapwright"); QCoreApplication::setApplicationName("Mapwright"); QCoreApplication::setApplicationVersion(MAPWRIGHT_VERSION);
     QGuiApplication::setApplicationDisplayName("Map Editor");
     app.setStyle("Fusion");
-    app.setPalette(Theme::darkPalette());
     const auto families = QFontDatabase::families();
     for (const auto &family : {QString("Noto Sans CJK KR"), QString("Malgun Gothic"), QString("Apple SD Gothic Neo"), QString("Noto Sans")}) {
         if (families.contains(family)) { app.setFont(QFont(family, 10)); break; }
     }
-    QFile style(":/style.qss"); if (style.open(QIODevice::ReadOnly)) app.setStyleSheet(QString::fromUtf8(style.readAll()));
+    Theme::apply(QSettings().value("colorTheme", "dark").toString() != "light");
     QCommandLineParser parser; parser.setApplicationDescription("PGM + YAML occupancy map editor"); parser.addHelpOption(); parser.addVersionOption(); parser.addPositionalArgument("map", "PGM or YAML map file", "[map]");
     parser.addOption({"screenshot", "Save a UI screenshot and exit (for local QA).", "path"});
     parser.addOption({"keepout", "Open a keepout mask over the reference map.", "yaml"});

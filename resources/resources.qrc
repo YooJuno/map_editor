@@ -1,5 +1,8 @@
 <RCC><qresource prefix="/">
   <file>style.qss</file><file>mapwright.png</file><file>check.png</file>
+  <file>style-light.qss</file>
   <file>arrow-up.png</file><file>arrow-down.png</file>
   <file>arrow-up-disabled.png</file><file>arrow-down-disabled.png</file>
+  <file>arrow-up-light.png</file><file>arrow-down-light.png</file>
+  <file>arrow-up-disabled-light.png</file><file>arrow-down-disabled-light.png</file>
 </qresource></RCC>

@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "icons.h"
 #include <QAction>
+#include <QActionGroup>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -66,7 +67,7 @@ protected:
             isEnabled() ? QIcon::Normal : QIcon::Disabled);
         auto labelFont = font(); labelFont.setPointSizeF(qMax(8., font().pointSizeF() - 1.));
         painter.setFont(labelFont);
-        painter.setPen(isEnabled() ? QColor(isChecked() ? "#d9e9dd" : "#a2b2a8") : QColor("#65766d"));
+        painter.setPen(isEnabled() ? QColor(Theme::isDark() ? (isChecked() ? "#d9e9dd" : "#a2b2a8") : (isChecked() ? "#345646" : "#69716b")) : QColor(Theme::isDark() ? "#65766d" : "#a5ada3"));
         painter.drawText(QRect(0, 32, width(), 19), Qt::AlignHCenter | Qt::AlignTop, text());
     }
 };
@@ -119,11 +120,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     auto *fileBar = addToolBar("파일");
     fileBar->setObjectName("fileToolbar");
     fileBar->setMovable(false);
+    fileBar->setFixedHeight(48);
     fileBar->setIconSize({18, 18});
     fileBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     auto *brand = new QWidget; brand->setObjectName("brand");
     auto *brandRow = new QHBoxLayout(brand); brandRow->setContentsMargins(6, 0, 24, 0); brandRow->setSpacing(10);
     auto *brandIcon = new QLabel; brandIcon->setPixmap(Icons::get(Icons::Map, QColor("#9cbaa7")).pixmap(26, 26));
+    brandIcon->setObjectName("brandIcon");
     auto *brandLabel = new QLabel("Map Editor"); brandLabel->setObjectName("brandLabel");
     brandRow->addWidget(brandIcon); brandRow->addWidget(brandLabel); fileBar->addWidget(brand);
     fileBar->addWidget(actionButton(newAction_));
@@ -135,6 +138,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     auto *rightSpace = new QWidget; rightSpace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred); fileBar->addWidget(rightSpace);
     fileBar->addWidget(actionButton(undoAction_)); fileBar->addWidget(actionButton(redoAction_));
     fileBar->addWidget(separator());
+    auto *themeMenu = new QMenu("테마", this); auto *themeGroup = new QActionGroup(this);
+    darkThemeAction_ = themeMenu->addAction("다크 모드"); darkThemeAction_->setObjectName("darkTheme");
+    lightThemeAction_ = themeMenu->addAction("라이트 모드"); lightThemeAction_->setObjectName("lightTheme");
+    for (auto *action : {darkThemeAction_, lightThemeAction_}) { action->setCheckable(true); themeGroup->addAction(action); }
+    connect(darkThemeAction_, &QAction::triggered, this, [this] { changeTheme(true); });
+    connect(lightThemeAction_, &QAction::triggered, this, [this] { changeTheme(false); });
+    viewMenu_->addMenu(themeMenu);
+    themeButton_ = new QToolButton; themeButton_->setObjectName("themeButton"); themeButton_->setMenu(themeMenu);
+    themeButton_->setPopupMode(QToolButton::InstantPopup); themeButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    themeButton_->setToolTip("다크 / 라이트 테마 선택"); fileBar->addWidget(themeButton_);
     auto *saveButton = actionButton(saveAction_, "primarySave");
     saveButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     auto *saveMenu = new QMenu(saveButton); saveMenu->addAction(saveAsAction_);
@@ -240,7 +253,29 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     });
     const auto geometry = QSettings().value("windowGeometry").toByteArray();
     if (!geometry.isEmpty()) restoreGeometry(geometry);
+    refreshThemeIcons();
     refresh();
+}
+
+void MainWindow::changeTheme(bool dark) {
+    Theme::apply(dark); QSettings().setValue("colorTheme", dark ? "dark" : "light");
+    refreshThemeIcons(); refresh(); canvas_->update();
+}
+void MainWindow::refreshThemeIcons() {
+    const bool dark = Theme::isDark();
+    darkThemeAction_->setChecked(dark); lightThemeAction_->setChecked(!dark);
+    themeButton_->setText(dark ? "다크" : "라이트"); themeButton_->setIcon(Icons::get(dark ? Icons::Moon : Icons::Sun));
+    setWindowIcon(Icons::get(Icons::Map));
+    findChild<QLabel *>("brandIcon")->setPixmap(Icons::get(Icons::Map, QColor(dark ? "#9cbaa7" : "#496b57")).pixmap(26, 26));
+    findChild<QToolButton *>("hideInspector")->setIcon(Icons::get(Icons::Chevron));
+    const Icons::Name toolIcons[]{Icons::Pen, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon};
+    for (int i = 0; i <= Canvas::Polygon; ++i) tools_->button(i)->setIcon(Icons::get(toolIcons[i]));
+    const Icons::Name navigationIcons[]{Icons::Map, Icons::Polygon, Icons::Polygon, Icons::Rotate, Icons::Crop, Icons::Origin};
+    for (int i = 0; i < 6; ++i) workspaces_->button(i)->setIcon(Icons::get(navigationIcons[i], QColor(i == 1 ? (dark ? "#dba397" : "#b56b61") : i == 2 ? (dark ? "#a0bfe0" : "#6586b0") : (dark ? "#becbc3" : "#49534e"))));
+    newAction_->setIcon(Icons::get(Icons::New)); openAction_->setIcon(Icons::get(Icons::Open));
+    saveAction_->setIcon(Icons::get(Icons::Save, QColor(dark ? "#d9e9dd" : "#426437")));
+    undoAction_->setIcon(Icons::get(Icons::Undo)); redoAction_->setIcon(Icons::get(Icons::Redo));
+    fitAction_->setIcon(Icons::get(Icons::Fit)); zoomInAction_->setIcon(Icons::get(Icons::Plus)); zoomOutAction_->setIcon(Icons::get(Icons::Minus));
 }
 
 QWidget *MainWindow::makeNavigation() {
@@ -935,7 +970,7 @@ void MainWindow::refresh() {
     closeMasks_->setVisible(hasMasks());
     speedPercent_->setVisible(activeLayer_ == 2); speedLabel_->setVisible(activeLayer_ == 2);
     maskHelp_->setText(activeLayer_ == 1 ? "빨강으로 표시된 구역은 진입 금지입니다." : "파랑 영역은 설정한 비율로 속도를 제한합니다.");
-    maskHelp_->setStyleSheet(activeLayer_ == 1 ? "color: #dda294;" : "color: #a0c0e3;");
+    maskHelp_->setStyleSheet(activeLayer_ == 1 ? (Theme::isDark() ? "color: #dda294;" : "color: #b63830;") : (Theme::isDark() ? "color: #a0c0e3;" : "color: #2366b4;"));
     keepoutVisible_->setEnabled(!keepout_.empty()); speedVisible_->setEnabled(!speedMask_.empty()); opacity_->setEnabled(hasMasks());
     { QSignalBlocker block(layer_);
       layer_->setItemText(0, "원본 지도" + QString(doc_.dirty() ? " *" : ""));
@@ -958,7 +993,7 @@ void MainWindow::refresh() {
     radLabel_->setText(QString::number(meta.yaw, 'g', 10) + " rad");
     metadataState_->setText(pending_.isEmpty() ? "" : (error.isEmpty() ? "변경됨 (적용 전)" : error));
     metadataState_->setVisible(!pending_.isEmpty());
-    metadataState_->setStyleSheet(error.isEmpty() ? "" : "color: #e0a091;");
+    metadataState_->setStyleSheet(error.isEmpty() ? "" : (Theme::isDark() ? "color: #e0a091;" : "color: #a63030;"));
     apply_->setEnabled(!empty && !pending_.isEmpty() && error.isEmpty());
     revert_->setEnabled(!pending_.isEmpty());
     refreshPalette();

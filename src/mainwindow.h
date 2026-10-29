@@ -15,6 +15,7 @@ class QDockWidget;
 class QMenu;
 class QSlider;
 class QToolBar;
+class QToolButton;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -37,6 +38,8 @@ private:
     bool applyGeometry();
     bool geometryPending() const;
     void updateCropFields(QRect area);
+    void changeTheme(bool dark);
+    void refreshThemeIcons();
     QWidget *makeProperties();
     QWidget *makeLayers();
     void makeActions();
@@ -91,6 +94,8 @@ private:
     QPushButton *apply_, *revert_, *resetGray_;
     QAction *saveAction_, *saveAsAction_, *undoAction_, *redoAction_;
     QAction *newAction_, *openAction_;
+    QAction *darkThemeAction_, *lightThemeAction_;
+    QToolButton *themeButton_;
     QMenu *viewMenu_;
     QAction *rotateAction_, *normalizeAction_, *fitAction_, *actualAction_, *zoomInAction_, *zoomOutAction_;
     QToolBar *drawingRail_;

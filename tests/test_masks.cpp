@@ -35,7 +35,7 @@ class MaskTest : public QObject {
     static QByteArray read(const QString &path) { QFile f(path); if (!f.open(QIODevice::ReadOnly)) return {}; return f.readAll(); }
 private slots:
     void initTestCase() {
-        qApp->setStyle("Fusion"); qApp->setPalette(Theme::darkPalette());
+        qApp->setStyle("Fusion"); Theme::apply(true);
         if (!qEnvironmentVariable("MAPEDITOR_PREVIEW_DIR").isEmpty()) qApp->setFont(QFont("Noto Sans CJK KR", 10));
         QFile style(":/style.qss"); if (style.open(QIODevice::ReadOnly)) qApp->setStyleSheet(QString::fromUtf8(style.readAll()));
     }

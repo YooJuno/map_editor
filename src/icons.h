@@ -3,11 +3,13 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
+#include "theme.h"
 
 // Small, consistent outline icons rendered by Qt; no platform icon theme or SVG plugin required.
 namespace Icons {
-enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin };
-inline QIcon get(Name name, QColor color = QColor("#becbc3")) {
+enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin, Moon, Sun };
+inline QIcon get(Name name, QColor color = {}) {
+    if (!color.isValid()) color = QColor(Theme::isDark() ? "#becbc3" : "#49534e");
     QIcon icon;
     for (int size : {16, 20, 24, 32, 40, 48, 64}) {
         QPixmap pixmap(size, size); pixmap.fill(Qt::transparent);
@@ -79,6 +81,11 @@ inline QIcon get(Name name, QColor color = QColor("#becbc3")) {
         case Origin:
             p.drawEllipse(QPointF(12, 12), 5, 5); path.moveTo(12, 2); path.lineTo(12, 8);
             path.moveTo(12, 16); path.lineTo(12, 22); path.moveTo(2, 12); path.lineTo(8, 12); path.moveTo(16, 12); path.lineTo(22, 12); break;
+        case Moon:
+            path.moveTo(20, 15); path.cubicTo(8, 18, 5, 7, 10, 3); path.cubicTo(-2, 5, 3, 26, 16, 20); path.cubicTo(18, 19, 19, 17, 20, 15); break;
+        case Sun:
+            p.drawEllipse(QPointF(12, 12), 4, 4);
+            for (int i = 0; i < 8; ++i) { p.save(); p.translate(12, 12); p.rotate(45. * i); p.drawLine(QPointF(0, 7), QPointF(0, 10)); p.restore(); } break;
         }
         p.drawPath(path); p.end();
         icon.addPixmap(pixmap);

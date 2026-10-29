@@ -175,7 +175,7 @@ void Canvas::zoomAt(double factor, QPointF anchor) {
 }
 void Canvas::paintEvent(QPaintEvent *) {
     QPainter p(this);
-    p.fillRect(rect(), QColor("#171e22"));
+    p.fillRect(rect(), QColor(Theme::isDark() ? "#171e22" : "#303531"));
     if (base_->empty()) {
         const int center = height() / 2;
         Icons::get(Icons::Map, QColor("#8b9c88")).paint(&p, QRect(width() / 2 - 26, center - 88, 52, 52));

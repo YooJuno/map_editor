@@ -1,7 +1,15 @@
 #pragma once
 #include <QPalette>
+#include <QApplication>
+#include <QFile>
+#include <QStyle>
+#include <QVariant>
 
 namespace Theme {
+inline bool isDark() {
+    const auto selected = qApp->property("darkTheme");
+    return selected.isValid() ? selected.toBool() : qApp->palette().color(QPalette::Window).lightness() < 128;
+}
 inline QPalette darkPalette() {
     QPalette palette;
     for (auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled}) {
@@ -26,5 +34,11 @@ inline QPalette darkPalette() {
         palette.setColor(group, QPalette::Link, QColor("#b2c9b9"));
     }
     return palette;
+}
+inline void apply(bool dark) {
+    qApp->setProperty("darkTheme", dark);
+    qApp->setPalette(dark ? darkPalette() : qApp->style()->standardPalette());
+    QFile sheet(dark ? ":/style.qss" : ":/style-light.qss");
+    if (sheet.open(QIODevice::ReadOnly)) qApp->setStyleSheet(QString::fromUtf8(sheet.readAll()));
 }
 }
