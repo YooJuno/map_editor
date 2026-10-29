@@ -175,16 +175,16 @@ void Canvas::zoomAt(double factor, QPointF anchor) {
 }
 void Canvas::paintEvent(QPaintEvent *) {
     QPainter p(this);
-    p.fillRect(rect(), QColor(Theme::isDark() ? "#171e22" : "#303531"));
+    p.fillRect(rect(), QColor(Theme::isDark() ? "#191c21" : "#303236"));
     if (base_->empty()) {
         const int center = height() / 2;
-        Icons::get(Icons::Map, QColor("#8b9c88")).paint(&p, QRect(width() / 2 - 26, center - 88, 52, 52));
+        Icons::get(Icons::Map, QColor("#959daa")).paint(&p, QRect(width() / 2 - 26, center - 88, 52, 52));
         auto heading = font(); heading.setPointSizeF(16); heading.setWeight(QFont::Medium); p.setFont(heading);
-        p.setPen(QColor("#dce3d8"));
+        p.setPen(QColor("#e2e5ea"));
         p.drawText(QRect(0, center - 12, width(), 34), Qt::AlignCenter, "지도를 열어 시작하세요");
-        auto body = font(); body.setPointSizeF(10); p.setFont(body); p.setPen(QColor("#9da996"));
+        auto body = font(); body.setPointSizeF(10); p.setFont(body); p.setPen(QColor("#a5abb6"));
         p.drawText(QRect(0, center + 28, width(), 28), Qt::AlignCenter, "YAML 또는 PGM 파일을 여기에 끌어 놓으세요");
-        body.setPointSizeF(9); p.setFont(body); p.setPen(QColor("#788872"));
+        body.setPointSizeF(9); p.setFont(body); p.setPen(QColor("#838e9f"));
         p.drawText(QRect(0, center + 66, width(), 24), Qt::AlignCenter,
             QKeySequence(QKeySequence::Open).toString(QKeySequence::NativeText) + "  ·  지도 열기");
         return;
@@ -194,7 +194,7 @@ void Canvas::paintEvent(QPaintEvent *) {
         const auto gray = MapIO::unknownGray(base_->meta()); p.fillRect(target, QColor(gray, gray, gray));
         p.save(); p.translate(offset_); p.scale(scale_, scale_); p.setTransform(previewTransform_, true);
         p.setRenderHint(QPainter::SmoothPixmapTransform, false); p.drawImage(QPointF(), base_->image()); p.restore();
-        p.setPen(QPen(QColor(120, 153, 139, 150), 1, Qt::DashLine));
+        p.setPen(QPen(QColor(147, 160, 180, 150), 1, Qt::DashLine));
         p.drawLine(QPointF(target.center().x(), target.top()), QPointF(target.center().x(), target.bottom()));
         p.drawLine(QPointF(target.left(), target.center().y()), QPointF(target.right(), target.center().y()));
         return;
@@ -216,7 +216,7 @@ void Canvas::paintEvent(QPaintEvent *) {
     };
     overlay(speed_, showSpeed_, true);
     overlay(keepout_, showKeepout_, false);
-    p.setPen(QColor("#0f1518")); p.drawRect(target);
+    p.setPen(QColor("#111419")); p.drawRect(target);
     if (scale_ >= 10) {
         p.save(); p.setClipRect(target);
         p.setPen(QColor(0, 0, 0, 32));
@@ -236,17 +236,17 @@ void Canvas::paintEvent(QPaintEvent *) {
                 p.setPen(QPen(color, 2)); p.drawLine(origin, end); p.setBrush(color); p.drawEllipse(end, 3, 3); p.drawText(end + QPointF(5, -5), label);
             };
             arrow(origin + QPointF(std::cos(yaw), std::sin(yaw)) * len, QColor("#cc564d"), "X");
-            arrow(origin + QPointF(std::sin(yaw), -std::cos(yaw)) * len, QColor("#24865f"), "Y");
-            p.setPen(QPen(QColor("#80ab96"), 2)); p.setBrush(Qt::white); p.drawEllipse(origin, 4, 4);
-            if (tool_ == Origin) { p.setPen(QColor("#537d68")); p.drawText(origin + QPointF(9, 18), "0, 0"); }
+            arrow(origin + QPointF(std::sin(yaw), -std::cos(yaw)) * len, QColor("#6486a6"), "Y");
+            p.setPen(QPen(QColor("#91aac5"), 2)); p.setBrush(Qt::white); p.drawEllipse(origin, 4, 4);
+            if (tool_ == Origin) { p.setPen(QColor("#576d87")); p.drawText(origin + QPointF(9, 18), "0, 0"); }
         }
     }
     if (tool_ == Crop && !cropSelection_.isEmpty()) {
         const QRectF selection(screenPoint(QPointF(cropSelection_.topLeft())), QSizeF(cropSelection_.size()) * scale_);
         QPainterPath shade; shade.addRect(target); shade.addRect(selection);
         p.fillPath(shade, QColor(0, 0, 0, 155));
-        p.setPen(QPen(QColor("#b9d5c4"), 1.5, Qt::DashLine)); p.setBrush(Qt::NoBrush); p.drawRect(selection);
-        p.setPen(Qt::NoPen); p.setBrush(QColor("#dcece1"));
+        p.setPen(QPen(QColor("#c4d1e3"), 1.5, Qt::DashLine)); p.setBrush(Qt::NoBrush); p.drawRect(selection);
+        p.setPen(Qt::NoPen); p.setBrush(QColor("#e6edf7"));
         for (const auto corner : {selection.topLeft(), selection.topRight(), selection.bottomLeft(), selection.bottomRight()})
             p.drawRect(QRectF(corner - QPointF(3, 3), QSizeF(6, 6)));
     }

@@ -104,7 +104,8 @@ private:
     QSlider *rotationSlider_;
     QSpinBox *cropX_, *cropY_, *cropWidth_, *cropHeight_;
     QPushButton *applyGeometry_, *resetGeometry_;
-    QLabel *geometryStatus_, *originHelp_;
+    QLabel *geometryStatus_, *originHelp_, *geometryLockHint_;
+    QWidget *toolDivider_;
     int workspaceMode_ = 0;
     bool changingGeometry_ = false;
     QSet<QString> pending_;

@@ -231,8 +231,8 @@ private slots:
         QTest::keyClick(canvas, Qt::Key_Return); QCOMPARE(doc->image().size(), QSize(22, 17));
         doc->save(); window.findChild<QPushButton *>("keepoutWorkspace")->click();
         auto *mask = window.activeDocument(); QVERIFY(mask != doc); QCOMPARE(mask->image().size(), doc->image().size());
-        QVERIFY(!window.findChild<QPushButton *>("cropWorkspace")->isEnabled());
-        QVERIFY(!window.findChild<QPushButton *>("rotateWorkspace")->isEnabled());
+        QVERIFY(window.findChild<QPushButton *>("cropWorkspace")->property("locked").toBool());
+        QVERIFY(window.findChild<QPushButton *>("rotateWorkspace")->property("locked").toBool());
         window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(canvas, {2.5, 2.5}, {10.5, 8.5});
         QCOMPARE(int(mask->image().constScanLine(4)[5]), 100);
         window.findChild<QPushButton *>("clearZone")->click(); rectangle(canvas, {2.5, 2.5}, {10.5, 8.5});
@@ -261,6 +261,33 @@ private slots:
         canvas.setCropSelection(doc.image().rect());
         rectangle(&canvas, {32, 24}, {25, 18}); QCOMPARE(canvas.cropSelection(), QRect(0, 0, 25, 18));
         QVERIFY(!doc.dirty());
+    }
+    void geometryLockExplainsAndSavesMasksBeforeContinuing() {
+        QTemporaryDir dir; const auto paths = MapIO::savePair(reference(), dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        auto *base = window.activeDocument(); const auto original = base->image().copy();
+        window.findChild<QPushButton *>("keepoutWorkspace")->click(); auto *mask = window.activeDocument();
+        window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(window.canvas(), {3.5, 3.5}, {8.5, 8.5});
+        const auto maskPath = dir.filePath("keepout.yaml"); mask->save(maskPath);
+        rectangle(window.canvas(), {14.5, 4.5}, {20.5, 10.5}); QVERIFY(mask->dirty());
+        bool explained = false;
+        QTimer::singleShot(0, [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                explained = box->informativeText().contains("좌표"); box->button(QMessageBox::Cancel)->click();
+            }
+        });
+        window.findChild<QPushButton *>("rotateWorkspace")->click();
+        QVERIFY(explained); QVERIFY(mask->dirty()); QVERIFY(!mask->empty()); QCOMPARE(window.activeDocument(), mask);
+        QTimer::singleShot(0, [] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+                for (auto *button : box->buttons()) if (button->text().contains("계속")) { button->click(); break; }
+        });
+        window.findChild<QPushButton *>("cropWorkspace")->click();
+        QVERIFY(mask->empty()); QCOMPARE(window.activeDocument(), base); QCOMPARE(base->image(), original);
+        QVERIFY(window.findChild<QSpinBox *>("cropWidth")->isVisible());
+        const auto saved = Mask::load(maskPath, base->map(), Mask::Keepout);
+        QCOMPARE(int(saved.image.constScanLine(6)[17]), 100);
+        window.close();
     }
 };
 QTEST_MAIN(MaskTest)

@@ -9,7 +9,7 @@
 namespace Icons {
 enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin, Moon, Sun };
 inline QIcon get(Name name, QColor color = {}) {
-    if (!color.isValid()) color = QColor(Theme::isDark() ? "#becbc3" : "#49534e");
+    if (!color.isValid()) color = QColor(Theme::isDark() ? "#c5cbd4" : "#535d6c");
     QIcon icon;
     for (int size : {16, 20, 24, 32, 40, 48, 64}) {
         QPixmap pixmap(size, size); pixmap.fill(Qt::transparent);

@@ -63,12 +63,19 @@ protected:
         option.text.clear(); option.icon = QIcon();
         QPainter painter(this);
         style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
-        icon().paint(&painter, QRect((width() - 22) / 2, 8, 22, 22), Qt::AlignCenter,
-            isEnabled() ? QIcon::Normal : QIcon::Disabled);
+        const bool iconOnly = property("iconOnly").toBool(), locked = property("locked").toBool();
+        icon().paint(&painter, QRect((width() - 22) / 2, iconOnly ? (height() - 22) / 2 : 8, 22, 22), Qt::AlignCenter,
+            isEnabled() && !locked ? QIcon::Normal : QIcon::Disabled);
+        if (iconOnly) return;
         auto labelFont = font(); labelFont.setPointSizeF(qMax(8., font().pointSizeF() - 1.));
         painter.setFont(labelFont);
-        painter.setPen(isEnabled() ? QColor(Theme::isDark() ? (isChecked() ? "#d9e9dd" : "#a2b2a8") : (isChecked() ? "#345646" : "#69716b")) : QColor(Theme::isDark() ? "#65766d" : "#a5ada3"));
+        painter.setPen(isEnabled() ? QColor(Theme::isDark() ? (isChecked() ? "#e1e7ef" : "#adb3bd") : (isChecked() ? "#34485f" : "#737a84")) : QColor(Theme::isDark() ? "#737c89" : "#a6abb4"));
         painter.drawText(QRect(0, 32, width(), 19), Qt::AlignHCenter | Qt::AlignTop, text());
+        if (locked) {
+            painter.setPen(QPen(Theme::isDark() ? QColor("#9ba6b7") : QColor("#7b879a"), 1.2)); painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(QRectF(width() - 18, 11, 9, 7), 1, 1);
+            painter.drawArc(QRectF(width() - 16, 5, 5, 9), 0, 180 * 16);
+        }
     }
 };
 
@@ -125,12 +132,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     fileBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     auto *brand = new QWidget; brand->setObjectName("brand");
     auto *brandRow = new QHBoxLayout(brand); brandRow->setContentsMargins(6, 0, 24, 0); brandRow->setSpacing(10);
-    auto *brandIcon = new QLabel; brandIcon->setPixmap(Icons::get(Icons::Map, QColor("#9cbaa7")).pixmap(26, 26));
+    auto *brandIcon = new QLabel; brandIcon->setPixmap(Icons::get(Icons::Map, QColor("#abb9cc")).pixmap(26, 26));
     brandIcon->setObjectName("brandIcon");
     auto *brandLabel = new QLabel("Map Editor"); brandLabel->setObjectName("brandLabel");
     brandRow->addWidget(brandIcon); brandRow->addWidget(brandLabel); fileBar->addWidget(brand);
-    fileBar->addWidget(actionButton(newAction_));
-    fileBar->addAction(openAction_);
+    fileBar->addWidget(actionButton(openAction_));
     auto *leftSpace = new QWidget; leftSpace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred); fileBar->addWidget(leftSpace);
     documentTitle_ = new QLabel; documentTitle_->setObjectName("documentTitle");
     documentTitle_->setMaximumWidth(300); fileBar->addWidget(documentTitle_);
@@ -146,10 +152,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     connect(lightThemeAction_, &QAction::triggered, this, [this] { changeTheme(false); });
     viewMenu_->addMenu(themeMenu);
     themeButton_ = new QToolButton; themeButton_->setObjectName("themeButton"); themeButton_->setMenu(themeMenu);
-    themeButton_->setPopupMode(QToolButton::InstantPopup); themeButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    themeButton_->setPopupMode(QToolButton::InstantPopup); themeButton_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    themeButton_->setAccessibleName("테마 선택");
     themeButton_->setToolTip("다크 / 라이트 테마 선택"); fileBar->addWidget(themeButton_);
     auto *saveButton = actionButton(saveAction_, "primarySave");
-    saveButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    saveButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     auto *saveMenu = new QMenu(saveButton); saveMenu->addAction(saveAsAction_);
     saveMenu->addAction("모두 저장", this, [this] { saveAll(); });
     saveButton->setMenu(saveMenu); saveButton->setPopupMode(QToolButton::MenuButtonPopup);
@@ -265,15 +272,16 @@ void MainWindow::refreshThemeIcons() {
     const bool dark = Theme::isDark();
     darkThemeAction_->setChecked(dark); lightThemeAction_->setChecked(!dark);
     themeButton_->setText(dark ? "다크" : "라이트"); themeButton_->setIcon(Icons::get(dark ? Icons::Moon : Icons::Sun));
+    themeButton_->setToolTip(dark ? "다크 모드 · 테마 선택" : "라이트 모드 · 테마 선택");
     setWindowIcon(Icons::get(Icons::Map));
-    findChild<QLabel *>("brandIcon")->setPixmap(Icons::get(Icons::Map, QColor(dark ? "#9cbaa7" : "#496b57")).pixmap(26, 26));
+    findChild<QLabel *>("brandIcon")->setPixmap(Icons::get(Icons::Map, QColor(dark ? "#abb9cc" : "#5d708a")).pixmap(26, 26));
     findChild<QToolButton *>("hideInspector")->setIcon(Icons::get(Icons::Chevron));
     const Icons::Name toolIcons[]{Icons::Pen, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon};
     for (int i = 0; i <= Canvas::Polygon; ++i) tools_->button(i)->setIcon(Icons::get(toolIcons[i]));
     const Icons::Name navigationIcons[]{Icons::Map, Icons::Polygon, Icons::Polygon, Icons::Rotate, Icons::Crop, Icons::Origin};
-    for (int i = 0; i < 6; ++i) workspaces_->button(i)->setIcon(Icons::get(navigationIcons[i], QColor(i == 1 ? (dark ? "#dba397" : "#b56b61") : i == 2 ? (dark ? "#a0bfe0" : "#6586b0") : (dark ? "#becbc3" : "#49534e"))));
+    for (int i = 0; i < 6; ++i) workspaces_->button(i)->setIcon(Icons::get(navigationIcons[i], QColor(i == 1 ? (dark ? "#dba397" : "#b56b61") : i == 2 ? (dark ? "#a0bfe0" : "#6586b0") : (dark ? "#c5cbd4" : "#535d6c"))));
     newAction_->setIcon(Icons::get(Icons::New)); openAction_->setIcon(Icons::get(Icons::Open));
-    saveAction_->setIcon(Icons::get(Icons::Save, QColor(dark ? "#d9e9dd" : "#426437")));
+    saveAction_->setIcon(Icons::get(Icons::Save, QColor(dark ? "#e1e7ef" : "#4b5f7b")));
     undoAction_->setIcon(Icons::get(Icons::Undo)); redoAction_->setIcon(Icons::get(Icons::Redo));
     fitAction_->setIcon(Icons::get(Icons::Fit)); zoomInAction_->setIcon(Icons::get(Icons::Plus)); zoomOutAction_->setIcon(Icons::get(Icons::Minus));
 }
@@ -286,10 +294,14 @@ QWidget *MainWindow::makeNavigation() {
     const QStringList names{"mapWorkspace", "keepoutWorkspace", "speedWorkspace", "rotateWorkspace", "cropWorkspace", "originWorkspace"};
     const Icons::Name icons[]{Icons::Map, Icons::Polygon, Icons::Polygon, Icons::Rotate, Icons::Crop, Icons::Origin};
     for (int i = 0; i < labels.size(); ++i) {
-        if (i == 3) { column->addSpacing(10); column->addWidget(rule()); column->addSpacing(10); }
+        if (i == 3) {
+            column->addSpacing(10); column->addWidget(rule());
+            geometryLockHint_ = new QLabel; geometryLockHint_->setObjectName("navigationHint"); geometryLockHint_->setAlignment(Qt::AlignCenter); geometryLockHint_->setWordWrap(true);
+            column->addWidget(geometryLockHint_); column->addSpacing(10);
+        }
         auto *button = new DrawingButton(labels[i]); button->setObjectName(names[i]); button->setProperty("navigation", true);
         button->setCheckable(true); button->setFixedSize(68, 60);
-        button->setIcon(Icons::get(icons[i], QColor(i == 1 ? "#dba397" : i == 2 ? "#a0bfe0" : "#becbc3")));
+        button->setIcon(Icons::get(icons[i], QColor(i == 1 ? "#dba397" : i == 2 ? "#a0bfe0" : "#c5cbd4")));
         button->setToolTip(i == 1 ? "진입 금지 마스크 만들기 / 편집" : i == 2 ? "속도 제한 마스크 만들기 / 편집" : labels[i]);
         button->setAccessibleName(labels[i]); workspaces_->addButton(button, i); column->addWidget(button);
     }
@@ -358,10 +370,10 @@ QWidget *MainWindow::makeToolRail() {
         if (i == Canvas::Picker) continue;
         auto *button = new DrawingButton(labels[i]);
         button->setObjectName(names[i]);
-        button->setProperty("drawingTool", true); button->setIcon(Icons::get(icons[i]));
+        button->setProperty("drawingTool", true); button->setProperty("iconOnly", true); button->setIcon(Icons::get(icons[i]));
         button->setCheckable(true);
         button->setToolTip(labels[i] + " (" + keys[i] + ")");
-        button->setAccessibleName(labels[i]); button->setFixedSize(52, 56);
+        button->setAccessibleName(labels[i]); button->setFixedSize(44, 44);
         tools_->addButton(button, i);
         if (i == Canvas::Hand) {
             auto *divider = new QFrame; divider->setFrameShape(QFrame::HLine); divider->setObjectName("railDivider");
@@ -382,7 +394,7 @@ QWidget *MainWindow::makeTools() {
     row->setContentsMargins(12, 4, 12, 4); row->setSpacing(12);
     toolTitle_ = new QLabel("펜"); toolTitle_->setObjectName("toolTitle"); toolTitle_->setMinimumWidth(52);
     row->addWidget(toolTitle_);
-    row->addWidget(separator());
+    toolDivider_ = separator(); row->addWidget(toolDivider_);
     paintColorPanel_ = new QWidget;
     auto *paintRow = new QHBoxLayout(paintColorPanel_); paintRow->setContentsMargins(0, 0, 0, 0); paintRow->setSpacing(10);
     row->addWidget(paintColorPanel_);
@@ -393,7 +405,8 @@ QWidget *MainWindow::makeTools() {
         auto *button = new QPushButton;
         button->setObjectName("color" + QString::number(i));
         button->setCheckable(true);
-        button->setProperty("swatch", true); button->setFixedSize(88, 32); button->setIconSize({16, 16});
+        button->setProperty("swatch", true); button->setFixedSize(34, 32); button->setIconSize({22, 22});
+        button->setAccessibleName(QStringList{"흰색", "검정", "회색"}[i]);
         colors_->addButton(button, i);
         colorRow->addWidget(button);
     }
@@ -406,9 +419,9 @@ QWidget *MainWindow::makeTools() {
     connect(resetGray_, &QPushButton::clicked, this, [this] { sampledGray_ = -1; refreshPalette(); canvas_->setFocus(); });
     brushPanel_ = new QWidget;
     auto *brushRow = new QHBoxLayout(brushPanel_); brushRow->setContentsMargins(0, 0, 0, 0); brushRow->setSpacing(8);
-    brushRow->addWidget(new QLabel("굵기"));
     size_ = new QSpinBox;
     size_->setObjectName("brushSize");
+    size_->setAccessibleName("브러시 굵기"); size_->setToolTip("브러시 굵기 (px) · [ / ]");
     size_->setRange(1, 512);
     size_->setValue(penSize_);
     size_->setSuffix(" px");
@@ -432,8 +445,8 @@ QWidget *MainWindow::makeTools() {
     }
     maskColors_->button(0)->setChecked(true); paintRow->addWidget(maskColorPanel_);
     connect(maskColors_, &QButtonGroup::idClicked, this, [this] { refreshPalette(); canvas_->setFocus(); });
-    auto *picker = new QPushButton("스포이드"); picker->setObjectName("pickerTool"); picker->setCheckable(true);
-    picker->setIcon(Icons::get(Icons::Picker)); picker->setIconSize({18, 18}); picker->setToolTip("지도에서 실제 픽셀값 가져오기 (I)");
+    auto *picker = new QPushButton; picker->setObjectName("pickerTool"); picker->setCheckable(true); picker->setFixedSize(34, 32);
+    picker->setAccessibleName("스포이드"); picker->setIcon(Icons::get(Icons::Picker)); picker->setIconSize({20, 20}); picker->setToolTip("스포이드 · 실제 픽셀값 가져오기 (I)");
     tools_->addButton(picker, Canvas::Picker); paintRow->addWidget(picker);
     row->addStretch();
     toolContext_ = new QLabel; toolContext_->setObjectName("toolContext"); row->addWidget(toolContext_);
@@ -606,7 +619,7 @@ void MainWindow::makeActions() {
     newAction_->setShortcut(QKeySequence::New);
     openAction_ = file->addAction(Icons::get(Icons::Open), "지도 열기", this, &MainWindow::open);
     openAction_->setShortcut(QKeySequence::Open);
-    saveAction_ = file->addAction(Icons::get(Icons::Save, QColor("#d9e9dd")), "저장", this, [this] { save(); });
+    saveAction_ = file->addAction(Icons::get(Icons::Save, QColor("#e1e7ef")), "저장", this, [this] { save(); });
     saveAction_->setObjectName("saveAction"); saveAction_->setShortcut(QKeySequence::Save);
     saveAsAction_ = file->addAction("다른 이름으로 저장", this, [this] { save(true); });
     saveAsAction_->setShortcut(QKeySequence::SaveAs);
@@ -740,12 +753,11 @@ void MainWindow::refreshPalette() {
     const int values[]{255, 0, gray};
     for (int i = 0; i < 3; ++i) {
         auto *button = colors_->button(i);
-        button->setText(QStringList{"흰색", "검정", "회색"}[i]);
         button->setToolTip(QString("%1 — %2 (%3)").arg(QStringList{"흰색", "검정", "회색"}[i], roles[i]).arg(values[i]));
-        QPixmap swatch(32, 32); swatch.fill(Qt::transparent);
+        QPixmap swatch(48, 48); swatch.fill(Qt::transparent);
         QPainter painter(&swatch); painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(QPen(QColor("#839489"), 1.5)); painter.setBrush(QColor(shades[i]));
-        painter.drawEllipse(QRectF(2, 2, 28, 28)); painter.end();
+        painter.setPen(QPen(QColor("#929aa7"), 1.5)); painter.setBrush(QColor(shades[i]));
+        painter.drawEllipse(QRectF(2, 2, 44, 44)); painter.end();
         button->setIcon(QIcon(swatch));
     }
     paletteNote_->setText(QString("회색 %1 (%2)%3").arg(gray).arg(grayRole).arg(sampledGray_ >= 0 ? " · 추출값" : ""));
@@ -800,7 +812,19 @@ bool MainWindow::applyGeometry() {
 void MainWindow::selectWorkspace(int mode) {
     if (doc_.empty()) { workspaces_->button(workspaceMode_)->setChecked(true); return; }
     if (mode == workspaceMode_) { propertiesDock_->show(); canvas_->setFocus(); return; }
-    if (mode >= 3 && hasMasks()) { workspaces_->button(workspaceMode_)->setChecked(true); return; }
+    if (mode >= 3 && hasMasks()) {
+        workspaces_->button(workspaceMode_)->setChecked(true); canvas_->finishEditing();
+        const auto task = QStringList{"회전", "자르기", "원점 이동"}[mode - 3];
+        const bool dirty = keepout_.dirty() || speedMask_.dirty();
+        QMessageBox dialog(QMessageBox::Information, task, task + " 작업을 시작하려면 마스크를 먼저 닫아야 합니다.", QMessageBox::NoButton, this);
+        dialog.setObjectName("geometryLockDialog");
+        dialog.setInformativeText("열린 마스크가 지도와 같은 크기와 좌표를 사용하고 있어 편집을 잠갔습니다.\n저장한 마스크는 나중에 다시 열 수 있습니다.");
+        auto *proceed = dialog.addButton(dirty ? "마스크 저장 후 계속" : "마스크 닫고 계속", QMessageBox::AcceptRole);
+        auto *cancel = dialog.addButton(QMessageBox::Cancel); cancel->setText("취소"); dialog.setDefaultButton(cancel); dialog.exec();
+        if (dialog.clickedButton() != proceed) return;
+        for (auto *mask : {&keepout_, &speedMask_}) if (mask->dirty() && !saveDocument(mask)) return;
+        closeMasks(); if (hasMasks()) return;
+    }
     if (!applyMetadata()) { workspaces_->button(workspaceMode_)->setChecked(true); return; }
     const int target = mode <= 2 ? mode : 0;
     if (target != activeLayer_) layer_->setCurrentIndex(target);
@@ -940,9 +964,13 @@ void MainWindow::refresh() {
         .arg(document->map().hasYaml ? "" : "\nYAML 없음 (저장 시 생성)"));
     const bool visible = !mask || ((activeLayer_ == 1 ? keepoutVisible_->isChecked() : speedVisible_->isChecked()) && opacity_->value() > 0);
     toolPanel_->setEnabled(!empty && visible);
+    toolTitle_->setVisible(geometry); toolDivider_->setVisible(geometry);
     drawingRail_->setVisible(!geometry);
+    geometryLockHint_->setVisible(empty || hasMasks());
+    geometryLockHint_->setText(empty ? "지도 열기 필요" : "마스크 열림\n좌표 편집 잠김");
     for (int i = 0; i < 6; ++i) {
-        workspaces_->button(i)->setEnabled(!empty && (i < 3 || !hasMasks()));
+        workspaces_->button(i)->setEnabled(!empty);
+        workspaces_->button(i)->setProperty("locked", i >= 3 && hasMasks()); workspaces_->button(i)->update();
         if (i >= 3) workspaces_->button(i)->setToolTip(hasMasks() ? "마스크를 닫은 뒤 지도 크기와 좌표를 변경할 수 있습니다." : QStringList{"회전 미리보기", "지도 여백 자르기", "원점 위치 지정"}[i - 3]);
     }
     workspaces_->button(workspaceMode_)->setChecked(true);
