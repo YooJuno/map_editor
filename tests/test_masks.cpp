@@ -9,6 +9,8 @@
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QMessageBox>
+#include <QMouseEvent>
+#include <QLabel>
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
@@ -16,6 +18,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QToolButton>
+#include <cmath>
 
 class MaskTest : public QObject {
     Q_OBJECT
@@ -33,6 +37,19 @@ class MaskTest : public QObject {
         QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint(b).toPoint());
     }
     static QByteArray read(const QString &path) { QFile f(path); if (!f.open(QIODevice::ReadOnly)) return {}; return f.readAll(); }
+    static MapIO::Map centeredReference(double yaw = 0) {
+        auto map = reference(); map.meta.x = map.meta.y = 0; map.meta.yaw = yaw;
+        const auto center = MapIO::pixelToWorld({16, 12}, 24, map.meta); map.meta.x = -center.x(); map.meta.y = -center.y(); return map;
+    }
+    static void mouse(Canvas *canvas, QEvent::Type type, QPointF point, Qt::MouseButton button, Qt::MouseButtons buttons, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QMouseEvent event(type, point, QPointF(canvas->mapToGlobal(point.toPoint())), button, buttons, mods);
+        QCoreApplication::sendEvent(canvas, &event);
+    }
+    static void dragScreen(Canvas *canvas, QPointF from, QPointF to, Qt::KeyboardModifiers mods = Qt::NoModifier, Qt::MouseButton button = Qt::LeftButton) {
+        mouse(canvas, QEvent::MouseButtonPress, from, button, button, mods);
+        mouse(canvas, QEvent::MouseMove, to, Qt::NoButton, button, mods);
+        mouse(canvas, QEvent::MouseButtonRelease, to, button, Qt::NoButton, mods);
+    }
 private slots:
     void initTestCase() {
         qApp->setStyle("Fusion"); Theme::apply(true);
@@ -363,6 +380,124 @@ private slots:
         auto *tool = window.findChild<QPushButton *>("rectangleTool"); QVERIFY(tool->isEnabled()); tool->click();
         rectangle(window.canvas(), {3.5, 3.5}, {10.5, 10.5}); QVERIFY(window.activeDocument()->dirty());
         window.activeDocument()->save(dir.filePath("new-mask.yaml")); window.close();
+    }
+    void guiOriginHandleDragsWithoutJumpOrPixelChanges() {
+        QTemporaryDir dir; const auto paths = MapIO::savePair(centeredReference(.37), dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        window.findChild<QPushButton *>("originWorkspace")->click(); QCoreApplication::processEvents(); auto *canvas = window.canvas(); canvas->fit();
+        auto *doc = window.activeDocument(); const auto original = doc->image().copy(); const auto meta = doc->meta();
+        const auto originPixel = MapIO::worldToPixel({0, 0}, 24, meta); const auto origin = canvas->screenPoint(originPixel);
+        dragScreen(canvas, origin, origin); QVERIFY(!window.findChild<QAction *>("saveAction")->isEnabled());
+        const auto from = origin + QPointF(4, 3), to = from + QPointF(41, 29);
+        const auto expected = originPixel + canvas->mapPoint(to) - canvas->mapPoint(from);
+        dragScreen(canvas, from, to); QVERIFY(!doc->dirty()); QVERIFY(window.findChild<QAction *>("saveAction")->isEnabled());
+        window.findChild<QPushButton *>("applyMetadata")->click();
+        QVERIFY(QLineF(MapIO::worldToPixel({0, 0}, 24, doc->meta()), expected).length() < 4e-5); QCOMPARE(doc->image(), original);
+        window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(doc->meta() == meta);
+        // Origins outside the image remain draggable, rather than clamping to a map edge.
+        dragScreen(canvas, origin, {5, 5}); window.findChild<QPushButton *>("applyMetadata")->click();
+        QVERIFY(QLineF(MapIO::worldToPixel({0, 0}, 24, doc->meta()), canvas->mapPoint({5, 5})).length() < 4e-5);
+        window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(doc->meta() == meta); QVERIFY(!doc->dirty());
+        mouse(canvas, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+        mouse(canvas, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        mouse(canvas, QEvent::MouseMove, origin + QPointF(-52, 0), Qt::NoButton, Qt::LeftButton);
+        mouse(canvas, QEvent::MouseButtonRelease, origin + QPointF(-52, 0), Qt::LeftButton, Qt::NoButton);
+        QVERIFY(!window.findChild<QAction *>("saveAction")->isEnabled()); QVERIFY(doc->meta() == meta); window.close();
+    }
+    void guiOriginAxisRotationKeepsPivot_data() {
+        QTest::addColumn<bool>("yAxis"); QTest::addColumn<double>("initialYaw"); QTest::addColumn<double>("turn"); QTest::addColumn<bool>("snap");
+        QTest::newRow("x-clockwise") << false << 0. << 90. << false;
+        QTest::newRow("y-counterclockwise") << true << .37 << -45. << false;
+        QTest::newRow("shift-snap") << false << .37 << 32. << true;
+    }
+    void guiOriginAxisRotationKeepsPivot() {
+        QFETCH(bool, yAxis); QFETCH(double, initialYaw); QFETCH(double, turn); QFETCH(bool, snap);
+        QTemporaryDir dir; const auto paths = MapIO::savePair(centeredReference(initialYaw), dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        window.findChild<QPushButton *>("originWorkspace")->click(); QCoreApplication::processEvents(); auto *canvas = window.canvas(); canvas->fit();
+        auto *doc = window.activeDocument(); const auto image = doc->image().copy(); const auto meta = doc->meta();
+        const auto pivot = MapIO::worldToPixel({0, 0}, 24, meta), origin = canvas->screenPoint(pivot);
+        const auto direction = yAxis ? QPointF(std::sin(initialYaw), -std::cos(initialYaw)) : QPointF(std::cos(initialYaw), std::sin(initialYaw));
+        const auto from = origin + direction * 52, to = origin + QTransform().rotate(turn).map(direction * 52);
+        dragScreen(canvas, from, from); QVERIFY(!window.findChild<QAction *>("saveAction")->isEnabled());
+        dragScreen(canvas, from, to, snap ? Qt::ShiftModifier : Qt::NoModifier);
+        double expected = initialYaw * 180. / 3.14159265358979323846 + turn;
+        if (snap) expected = std::round(expected / 15.) * 15.;
+        QVERIFY(std::abs(window.findChild<QDoubleSpinBox *>("originYaw")->value() - expected) < 1e-5);
+        QVERIFY(!doc->dirty()); QCOMPARE(doc->image(), image);
+        QTest::keyClick(canvas, Qt::Key_Return);
+        QVERIFY(QLineF(MapIO::worldToPixel({0, 0}, 24, doc->meta()), pivot).length() < 4e-5); QCOMPARE(doc->image(), image);
+        window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(doc->meta() == meta); QVERIFY(!doc->dirty());
+        mouse(canvas, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+        mouse(canvas, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        mouse(canvas, QEvent::MouseMove, origin + QPointF(-52, 0), Qt::NoButton, Qt::LeftButton);
+        mouse(canvas, QEvent::MouseButtonRelease, origin + QPointF(-52, 0), Qt::LeftButton, Qt::NoButton);
+        QVERIFY(!window.findChild<QAction *>("saveAction")->isEnabled()); QVERIFY(doc->meta() == meta); window.close();
+    }
+    void guiImageRotationDragHasStableViewAndUndo() {
+        QTemporaryDir dir; auto map = centeredReference(); map.image.scanLine(3)[7] = 0;
+        const auto paths = MapIO::savePair(map, dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        window.findChild<QPushButton *>("rotateWorkspace")->click(); QCoreApplication::processEvents(); auto *canvas = window.canvas(); canvas->fit();
+        auto *doc = window.activeDocument(); const auto meta = doc->meta(), originalMeta = meta; const auto image = doc->image().copy();
+        auto *angle = window.findChild<QDoubleSpinBox *>("rotationAngle"); auto *slider = window.findChild<QSlider *>("rotationSlider");
+        const auto center = canvas->screenPoint({16, 12}); const auto scale = canvas->scale();
+        dragScreen(canvas, center + QPointF(0, -100), center + QPointF(100, 0));
+        QCOMPARE(angle->value(), 90.); QCOMPARE(slider->value(), 900); QCOMPARE(canvas->scale(), scale);
+        QVERIFY(QLineF(canvas->screenPoint({12, 16}), center).length() < 1e-8); QCOMPARE(doc->image(), image); QVERIFY(doc->meta() == meta); QVERIFY(!doc->dirty());
+        QTest::keyClick(canvas, Qt::Key_Return); QCOMPARE(doc->image().size(), QSize(24, 32)); QVERIFY(doc->dirty());
+        window.findChild<QAction *>("undoAction")->trigger(); QCOMPARE(doc->image(), image); QVERIFY(doc->meta() == originalMeta); QVERIFY(!doc->dirty());
+        // Wrapped angles and Shift snapping use the same fields as the numeric controls.
+        angle->setValue(170); const QPointF pivot(canvas->width() / 2., canvas->height() / 2.);
+        dragScreen(canvas, pivot + QPointF(100, 0), pivot + QTransform().rotate(20).map(QPointF(100, 0)));
+        QCOMPARE(angle->value(), -170.);
+        window.findChild<QPushButton *>("resetGeometry")->click();
+        const QPointF snapCenter(canvas->width() / 2., canvas->height() / 2.);
+        dragScreen(canvas, snapCenter + QPointF(100, 0), snapCenter + QTransform().rotate(32).map(QPointF(100, 0)), Qt::ShiftModifier);
+        QCOMPARE(angle->value(), 30.); QTest::keyClick(canvas, Qt::Key_Escape); QCOMPARE(angle->value(), 0.);
+        const auto before = canvas->screenPoint({16, 12}); dragScreen(canvas, before, before + QPointF(21, 13), Qt::NoModifier, Qt::MiddleButton);
+        QCOMPARE(angle->value(), 0.); QVERIFY(QLineF(canvas->screenPoint({16, 12}), before + QPointF(21, 13)).length() < 1e-8);
+        window.close();
+    }
+    void guiCancelStopsRotationGesture() {
+        QTemporaryDir dir; const auto paths = MapIO::savePair(centeredReference(), dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        window.findChild<QPushButton *>("rotateWorkspace")->click(); QCoreApplication::processEvents(); auto *canvas = window.canvas();
+        const QPointF center(canvas->width() / 2., canvas->height() / 2.);
+        mouse(canvas, QEvent::MouseButtonPress, center + QPointF(100, 0), Qt::LeftButton, Qt::LeftButton);
+        mouse(canvas, QEvent::MouseMove, center + QPointF(0, 100), Qt::NoButton, Qt::LeftButton);
+        QCOMPARE(window.findChild<QDoubleSpinBox *>("rotationAngle")->value(), 90.);
+        QTest::keyClick(canvas, Qt::Key_Escape);
+        mouse(canvas, QEvent::MouseMove, center + QPointF(-100, 0), Qt::NoButton, Qt::LeftButton);
+        mouse(canvas, QEvent::MouseButtonRelease, center + QPointF(-100, 0), Qt::LeftButton, Qt::NoButton);
+        QCOMPARE(window.findChild<QDoubleSpinBox *>("rotationAngle")->value(), 0.); QVERIFY(!window.activeDocument()->dirty()); window.close();
+    }
+    void guiFourPointPolygonCanFinishWithButtonOrRightClick_data() {
+        QTest::addColumn<bool>("button"); QTest::newRow("finish-button") << true; QTest::newRow("right-click") << false;
+    }
+    void guiFourPointPolygonCanFinishWithButtonOrRightClick() {
+        QFETCH(bool, button); QTemporaryDir dir; const auto paths = MapIO::savePair(reference(), dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        auto *base = window.activeDocument(); const auto original = base->image().copy(); window.findChild<QPushButton *>("keepoutWorkspace")->click();
+        auto *mask = window.activeDocument(); auto *canvas = window.canvas(); auto *finish = window.findChild<QPushButton *>("finishPolygon"); int count = 0;
+        for (const auto point : {QPointF(4, 4), QPointF(20, 4), QPointF(20, 16), QPointF(4, 16)}) {
+            QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint(point).toPoint()); ++count;
+            QCOMPARE(canvas->polygonPointCount(), count); QVERIFY(finish->isVisible()); QCOMPARE(finish->isEnabled(), count >= 3);
+            QVERIFY(window.findChild<QLabel *>("polygonCount")->text().contains(QString::number(count)));
+        }
+        QVERIFY(!mask->dirty()); QTest::mouseMove(canvas, canvas->screenPoint({28, 20}).toPoint());
+        if (button) finish->click(); else QTest::mouseClick(canvas, Qt::RightButton, Qt::NoModifier, canvas->screenPoint({29, 20}).toPoint());
+        QVERIFY(!canvas->isEditing()); QVERIFY(!finish->isVisible()); QCOMPARE(canvas->polygonPointCount(), 0);
+        QVERIFY(mask->dirty()); QCOMPARE(mask->undo()->count(), 1); QCOMPARE(int(mask->image().constScanLine(8)[10]), 100);
+        QCOMPARE(int(mask->image().constScanLine(18)[26]), 0); QCOMPARE(base->image(), original);
+        window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(!mask->dirty());
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({3, 3}).toPoint());
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({12, 3}).toPoint());
+        QTest::mouseClick(canvas, Qt::RightButton); QCOMPARE(canvas->polygonPointCount(), 2); QVERIFY(canvas->isEditing());
+        window.findChild<QToolButton *>("cancelPolygon")->click(); QVERIFY(!canvas->isEditing()); QVERIFY(!mask->dirty());
+        window.close();
     }
 };
 QTEST_MAIN(MaskTest)

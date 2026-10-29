@@ -13,7 +13,7 @@ void polygon(QImage &image, const QPolygonF &points, int gray);
 class Canvas : public QWidget {
     Q_OBJECT
 public:
-    enum Tool { Pen, Line, Rectangle, Fill, Hand, Picker, Polygon, Crop, Origin };
+    enum Tool { Pen, Line, Rectangle, Fill, Hand, Picker, Polygon, Crop, Origin, Rotate };
     explicit Canvas(Document *document, QWidget *parent = nullptr);
     void setTool(Tool tool);
     void setBrushSize(int size) { brushSize_ = size; update(); }
@@ -21,6 +21,8 @@ public:
     void setFilled(bool filled) { filled_ = filled; }
     void finishEditing();
     bool undoPolygonPoint();
+    int polygonPointCount() const { return tool_ == Polygon && drawing_ ? int(polygon_.size()) : 0; }
+    void cancelPolygon() { if (tool_ == Polygon && drawing_) cancelStroke(); }
     void setDocument(Document *document);
     void setMaskLayers(Document *keepout, Document *speed);
     void setMaskOpacity(double opacity) { maskOpacity_ = qBound(0., opacity, 1.); update(); }
@@ -36,7 +38,7 @@ public:
     void setCropSelection(QRect area);
     QRect cropSelection() const { return cropSelection_; }
     void setOriginPreview(const MapIO::Metadata &meta) { originPreview_ = true; originMeta_ = meta; update(); }
-    void clearOriginPreview() { originPreview_ = false; update(); }
+    void clearOriginPreview() { originPreview_ = draggingOrigin_ = rotatingOrigin_ = false; update(); }
     void setAxes(bool visible) { axes_ = visible; update(); }
     QPointF mapPoint(QPointF pos) const { return (pos - offset_) / scale_; }
     QPointF screenPoint(QPointF pos) const { return offset_ + pos * scale_; }
@@ -51,6 +53,8 @@ signals:
     void geometryApplyRequested();
     void previewCancelRequested();
     void originPicked(QPointF pixel);
+    void originYawDragged(QPointF pivotPixel, double degrees);
+    void rotationDragged(double degrees);
 protected:
     void paintEvent(QPaintEvent *) override;
     void resizeEvent(QResizeEvent *) override;
@@ -78,6 +82,13 @@ private:
     Qt::Edges cropEdgesAt(QPointF position) const;
     static Qt::CursorShape cropResizeCursor(Qt::Edges edges);
     void updateCropCursor(QPointF position);
+    QPointF originPosition() const;
+    int originHandleAt(QPointF position) const;
+    QPointF rotationCenter() const;
+    double rotationRadius() const;
+    void updateGeometryCursor(QPointF position);
+    void updateAngleDrag(QPointF position, Qt::KeyboardModifiers modifiers);
+    void stopGeometryDrag();
     Document *doc_;
     Document *base_;
     Document *keepout_ = nullptr, *speed_ = nullptr;
@@ -103,4 +114,8 @@ private:
     Qt::Edges cropResizeEdges_;
     bool originPreview_ = false, draggingOrigin_ = false;
     MapIO::Metadata originMeta_;
+    bool rotatingImage_ = false, rotatingOrigin_ = false;
+    bool angleDragMoved_ = false, originGrabbed_ = false;
+    QPointF originGrabOffset_, rotationDragCenter_, originDragPixel_, originPressPosition_;
+    double previewDegrees_ = 0, previousPointerAngle_ = 0, dragDegrees_ = 0;
 };

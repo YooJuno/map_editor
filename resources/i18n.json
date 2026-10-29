@@ -1400,5 +1400,65 @@
     "en": "Restore Defaults",
     "ja": "既定値に戻す",
     "zh": "恢复默认值"
+  },
+  "지도 위 핸들을 드래그하거나 슬라이더·숫자로 조절하세요.\nShift로 15°씩 회전합니다.": {
+    "en": "Drag the handle on the map, or use the slider or angle field.\nHold Shift for 15° steps.",
+    "ja": "マップ上のハンドルをドラッグするか、スライダー・数値で調整します。\nShift で15°ずつ回転します。",
+    "zh": "拖动地图上的手柄，或用滑块、数值调整。\n按住 Shift 以 15° 步进旋转。"
+  },
+  "가운데 점을 끌어 원점을 옮기고, X·Y축 끝점을 끌어 방향을 돌리세요.\nShift로 15°씩 회전합니다.": {
+    "en": "Drag the center to move the origin, or an X/Y endpoint to rotate the axes.\nHold Shift for 15° steps.",
+    "ja": "中央の点で原点を移動し、X・Y 軸の先端で向きを回転します。\nShift で15°ずつ回転します。",
+    "zh": "拖动中心点移动原点，拖动 X、Y 轴端点旋转方向。\n按住 Shift 以 15° 步进旋转。"
+  },
+  "드래그하여 이미지 회전 · Shift로 15°씩 조절": {
+    "en": "Drag to rotate the image · Shift for 15° steps",
+    "ja": "ドラッグで画像を回転 · Shift で15°ずつ",
+    "zh": "拖动旋转图像 · Shift 以 15° 步进调整"
+  },
+  "드래그하여 원점 이동": {
+    "en": "Drag to move the origin",
+    "ja": "ドラッグで原点を移動",
+    "zh": "拖动移动原点"
+  },
+  "드래그하여 좌표계 회전 · Shift로 15°씩 조절": {
+    "en": "Drag to rotate the axes · Shift for 15° steps",
+    "ja": "ドラッグで座標軸を回転 · Shift で15°ずつ",
+    "zh": "拖动旋转坐标系 · Shift 以 15° 步进调整"
+  },
+  "완료 버튼 또는 우클릭 · Enter 완료 · Esc 취소": {
+    "en": "Finish or right-click · Enter to finish · Esc to cancel",
+    "ja": "完了ボタンまたは右クリック · Enter で完了 · Esc で取消",
+    "zh": "点击完成或右键 · Enter 完成 · Esc 取消"
+  },
+  "완료": {
+    "en": "Finish",
+    "ja": "完了",
+    "zh": "完成"
+  },
+  "찍은 점으로 다각형 완성 · Enter 또는 우클릭": {
+    "en": "Finish the polygon with the placed points · Enter or right-click",
+    "ja": "配置した点で多角形を確定 · Enter または右クリック",
+    "zh": "用已添加的顶点完成多边形 · Enter 或右键"
+  },
+  "다각형 취소 · Esc": {
+    "en": "Cancel polygon · Esc",
+    "ja": "多角形を取り消す · Esc",
+    "zh": "取消多边形 · Esc"
+  },
+  "%1개 점": {
+    "en": "Points: %1",
+    "ja": "%1点",
+    "zh": "%1 个顶点"
+  },
+  "점을 찍고 완료 버튼·우클릭·Enter로 완성\nEsc 취소 · 제한 해제로 구역 삭제": {
+    "en": "Place points, then Finish, right-click or Enter\nEsc to cancel · Clear restriction to remove zones",
+    "ja": "点を置き、完了ボタン・右クリック・Enter で確定\nEsc で取消 · 制限を解除で区域を削除",
+    "zh": "点击添加顶点，用完成按钮、右键或 Enter 完成\nEsc 取消 · 用“解除限制”删除区域"
+  },
+  "점 3개 이상을 찍으세요 · Esc 취소": {
+    "en": "Place at least 3 points · Esc to cancel",
+    "ja": "3点以上を配置してください · Esc で取消",
+    "zh": "请添加至少 3 个顶点 · Esc 取消"
   }
 }

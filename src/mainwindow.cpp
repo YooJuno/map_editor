@@ -236,10 +236,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     connect(canvas_, &Canvas::geometryApplyRequested, this, [this] { if (workspaceMode_ == 5) applyMetadata(); else if (workspaceMode_ >= 3) applyGeometry(); });
     connect(canvas_, &Canvas::previewCancelRequested, this, [this] { if (workspaceMode_ == 5) revertMetadata(); else resetGeometry(); });
     connect(canvas_, &Canvas::originPicked, this, [this](QPointF point) {
-        if (workspaceMode_ != 5 || hasDirtyMasks()) return;
-        auto meta = editedMetadata(); meta.x = meta.y = 0;
-        const auto offset = MapIO::pixelToWorld(point, doc_.image().height(), meta);
-        x_->setValue(-offset.x()); y_->setValue(-offset.y());
+        previewOrigin(point, yaw_->value());
+    });
+    connect(canvas_, &Canvas::originYawDragged, this, &MainWindow::previewOrigin);
+    connect(canvas_, &Canvas::rotationDragged, this, [this](double angle) {
+        if (workspaceMode_ == 3 && !hasDirtyMasks()) rotationAngle_->setValue(angle);
     });
     connect(canvas_, &Canvas::positionChanged, this, [this](QPointF point) {
         if (doc_.empty() || point.x() < 0 || point.y() < 0 || point.x() >= doc_.image().width() || point.y() >= doc_.image().height()) return;
@@ -306,6 +307,7 @@ void MainWindow::refreshThemeIcons() {
     setWindowIcon(Icons::get(Icons::Map));
     findChild<QLabel *>("brandIcon")->setPixmap(Icons::get(Icons::Map, QColor(dark ? "#abb9cc" : "#5d708a")).pixmap(26, 26));
     findChild<QToolButton *>("hideInspector")->setIcon(Icons::get(Icons::Chevron));
+    findChild<QToolButton *>("cancelPolygon")->setIcon(Icons::get(Icons::Close));
     const Icons::Name toolIcons[]{Icons::Pen, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon};
     const QStringList labels{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형")};
     const QStringList keys{"B", "L", "R", "G", "H", "I", "P"};
@@ -349,7 +351,7 @@ QWidget *MainWindow::makeGeometry() {
     auto *panel = new QWidget; auto *layout = new QVBoxLayout(panel); layout->setContentsMargins(0, 0, 0, 0); layout->setSpacing(16);
     rotationPanel_ = new QWidget; auto *rotation = new QVBoxLayout(rotationPanel_); rotation->setContentsMargins(0, 0, 0, 0); rotation->setSpacing(12);
     rotation->addWidget(sectionTitle(I18n::text("이미지 회전")));
-    auto *explanation = new QLabel(I18n::text("슬라이더나 숫자로 조정한 뒤 적용하세요.\n원점과 Yaw도 함께 보정합니다.")); explanation->setWordWrap(true); explanation->setObjectName("instructions"); rotation->addWidget(explanation);
+    auto *explanation = new QLabel(I18n::text("지도 위 핸들을 드래그하거나 슬라이더·숫자로 조절하세요.\nShift로 15°씩 회전합니다.")); explanation->setWordWrap(true); explanation->setObjectName("instructions"); rotation->addWidget(explanation);
     rotationAngle_ = spin("rotationAngle", -180, 180, 3, .1); rotationAngle_->setSuffix(" °"); rotation->addWidget(rotationAngle_);
     rotationSlider_ = new QSlider(Qt::Horizontal); rotationSlider_->setObjectName("rotationSlider"); rotationSlider_->setRange(-1800, 1800); rotationSlider_->setSingleStep(1); rotationSlider_->setPageStep(50); rotation->addWidget(rotationSlider_);
     auto *ticks = new QHBoxLayout; ticks->addWidget(new QLabel("−180°")); ticks->addStretch(); ticks->addWidget(new QLabel("0°")); ticks->addStretch(); ticks->addWidget(new QLabel("180°")); rotation->addLayout(ticks);
@@ -484,6 +486,15 @@ QWidget *MainWindow::makeTools() {
     picker->setAccessibleName(I18n::text("스포이드")); picker->setIcon(Icons::get(Icons::Picker)); picker->setIconSize({20, 20}); picker->setToolTip(I18n::text("스포이드 · 실제 픽셀값 가져오기 (I)"));
     tools_->addButton(picker, Canvas::Picker); paintRow->addWidget(picker);
     row->addStretch();
+    polygonControls_ = new QWidget; auto *polygonRow = new QHBoxLayout(polygonControls_); polygonRow->setContentsMargins(0, 0, 0, 0); polygonRow->setSpacing(8);
+    polygonCount_ = new QLabel; polygonCount_->setObjectName("polygonCount"); polygonRow->addWidget(polygonCount_);
+    finishPolygon_ = new QPushButton(I18n::text("완료")); finishPolygon_->setObjectName("finishPolygon"); finishPolygon_->setProperty("primary", true);
+    finishPolygon_->setToolTip(I18n::text("찍은 점으로 다각형 완성 · Enter 또는 우클릭")); polygonRow->addWidget(finishPolygon_);
+    auto *cancelPolygon = new QToolButton; cancelPolygon->setObjectName("cancelPolygon"); cancelPolygon->setIcon(Icons::get(Icons::Close));
+    cancelPolygon->setToolTip(I18n::text("다각형 취소 · Esc")); cancelPolygon->setAccessibleName(I18n::text("취소")); polygonRow->addWidget(cancelPolygon);
+    connect(finishPolygon_, &QPushButton::clicked, this, [this] { canvas_->finishEditing(); canvas_->setFocus(); });
+    connect(cancelPolygon, &QToolButton::clicked, this, [this] { canvas_->cancelPolygon(); canvas_->setFocus(); });
+    row->addWidget(polygonControls_);
     toolContext_ = new QLabel; toolContext_->setObjectName("toolContext"); row->addWidget(toolContext_);
     return panel;
 }
@@ -551,14 +562,15 @@ QWidget *MainWindow::makeProperties() {
     geometryPanel_ = makeGeometry(); layout->addWidget(geometryPanel_);
     baseProperties_ = new QWidget;
     auto *baseLayout = new QVBoxLayout(baseProperties_); baseLayout->setContentsMargins(0, 0, 0, 0); baseLayout->setSpacing(14);
-    originHelp_ = new QLabel(I18n::text("월드 좌표 (0, 0)을 놓을 위치를 지도에서 클릭하거나 드래그한 뒤 적용하세요.")); originHelp_->setWordWrap(true); originHelp_->setObjectName("instructions"); baseLayout->addWidget(originHelp_);
-    baseLayout->addWidget(sectionTitle(I18n::text("지도 좌표")));
+    originHelp_ = new QLabel(I18n::text("가운데 점을 끌어 원점을 옮기고, X·Y축 끝점을 끌어 방향을 돌리세요.\nShift로 15°씩 회전합니다.")); originHelp_->setWordWrap(true); originHelp_->setObjectName("instructions"); baseLayout->addWidget(originHelp_);
+    resolutionPanel_ = new QWidget; auto *resolutionLayout = new QVBoxLayout(resolutionPanel_); resolutionLayout->setContentsMargins(0, 0, 0, 0); resolutionLayout->setSpacing(14);
+    resolutionLayout->addWidget(sectionTitle(I18n::text("지도 좌표")));
     auto *resolutionForm = new QFormLayout;
     resolutionForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     resolution_ = spin("resolution", .000000001, 1000000, 9, .01);
     resolution_->setSuffix(" m/px");
     resolutionForm->addRow(I18n::text("해상도"), resolution_);
-    baseLayout->addLayout(resolutionForm);
+    resolutionLayout->addLayout(resolutionForm); baseLayout->addWidget(resolutionPanel_);
     auto *originGroup = new QGroupBox(I18n::text("원점 · Origin"));
     originGroup->setToolTip(I18n::text("지도의 왼쪽 아래 모서리에 해당하는 월드 좌표"));
     auto *origin = new QFormLayout(originGroup);
@@ -584,6 +596,7 @@ QWidget *MainWindow::makeProperties() {
     advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     baseLayout->addWidget(advancedToggle);
     auto *advanced = new QWidget;
+    occupancyPanel_ = advanced;
     auto *thresholds = new QFormLayout(advanced); thresholds->setVerticalSpacing(10);
     thresholds->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     thresholds->setContentsMargins(0, 0, 0, 0);
@@ -628,7 +641,7 @@ QWidget *MainWindow::makeProperties() {
     connect(openMask_, &QPushButton::clicked, this, &MainWindow::openMask);
     connect(saveMask_, &QPushButton::clicked, this, [this] { save(); });
     connect(clearMask_, &QPushButton::clicked, this, &MainWindow::clearMask);
-    auto *instructions = new QLabel(I18n::text("점을 찍고 Enter로 다각형 완성\nEsc 취소 · 제한 해제로 구역 삭제")); instructions->setObjectName("instructions"); instructions->setWordWrap(true); maskLayout->addWidget(instructions);
+    auto *instructions = new QLabel(I18n::text("점을 찍고 완료 버튼·우클릭·Enter로 완성\nEsc 취소 · 제한 해제로 구역 삭제")); instructions->setObjectName("instructions"); instructions->setWordWrap(true); maskLayout->addWidget(instructions);
     layout->addWidget(maskProperties_);
     closeMasks_ = new QPushButton(I18n::text("마스크 모두 닫기")); closeMasks_->setObjectName("closeMasks"); layout->addWidget(closeMasks_);
     connect(closeMasks_, &QPushButton::clicked, this, &MainWindow::closeMasks);
@@ -813,6 +826,19 @@ bool MainWindow::geometryPending() const {
     return !doc_.empty() && (workspaceMode_ == 3 ? std::abs(rotationAngle_->value()) > 1e-10 :
         workspaceMode_ == 4 && !canvas_->cropSelection().isEmpty() && canvas_->cropSelection() != doc_.image().rect());
 }
+void MainWindow::previewOrigin(QPointF pixel, double yawDegrees) {
+    if (workspaceMode_ != 5 || hasDirtyMasks() || doc_.empty()) return;
+    const QSignalBlocker blockX(x_), blockY(y_), blockYaw(yaw_);
+    yaw_->setValue(yawDegrees);
+    auto meta = editedMetadata(); meta.x = meta.y = 0; meta.yaw = yaw_->value() * Rad;
+    const auto offset = MapIO::pixelToWorld(pixel, doc_.image().height(), meta);
+    x_->setValue(-offset.x()); y_->setValue(-offset.y());
+    for (auto *box : {x_, y_, yaw_}) {
+        if (box->value() == box->property("baseline").toDouble()) pending_.remove(box->objectName());
+        else pending_.insert(box->objectName());
+    }
+    refresh();
+}
 void MainWindow::updateCropFields(QRect area) {
     if (!area.isEmpty() && !doc_.empty()) {
         changingGeometry_ = true;
@@ -871,7 +897,7 @@ void MainWindow::selectWorkspace(int mode) {
     if (activeLayer_ != target) { workspaces_->button(workspaceMode_)->setChecked(true); return; }
     canvas_->finishEditing(); workspaceMode_ = mode;
     resetGeometry(); workspaces_->button(mode)->setChecked(true);
-    if (mode == 3) canvas_->setTool(Canvas::Hand);
+    if (mode == 3) canvas_->setTool(Canvas::Rotate);
     else if (mode == 4) canvas_->setTool(Canvas::Crop);
     else if (mode == 5) canvas_->setTool(Canvas::Origin);
     else tools_->button(target == 0 ? mapTool_ : maskTool_)->click();
@@ -1036,9 +1062,17 @@ void MainWindow::refresh() {
     layer_->setEnabled(!empty);
     baseProperties_->setVisible(!empty && !mask && (!geometry || workspaceMode_ == 5)); maskProperties_->setVisible(!empty && mask);
     originHelp_->setVisible(workspaceMode_ == 5);
+    resolutionPanel_->setVisible(workspaceMode_ != 5);
+    auto *advancedToggle = findChild<QToolButton *>("advancedToggle"); advancedToggle->setVisible(workspaceMode_ != 5);
+    occupancyPanel_->setVisible(workspaceMode_ != 5 && advancedToggle->isChecked());
     geometryPanel_->setVisible(!empty && (workspaceMode_ == 3 || workspaceMode_ == 4));
     rotationPanel_->setVisible(workspaceMode_ == 3); cropPanel_->setVisible(workspaceMode_ == 4);
     const bool previewPending = geometryPending();
+    const int polygonPoints = canvas_->polygonPointCount();
+    polygonControls_->setVisible(polygonPoints > 0);
+    polygonCount_->setText(QString(I18n::text("%1개 점")).arg(polygonPoints)); finishPolygon_->setEnabled(polygonPoints >= 3);
+    finishPolygon_->setToolTip(polygonPoints < 3 ? I18n::text("점 3개 이상을 찍으세요 · Esc 취소") : I18n::text("찍은 점으로 다각형 완성 · Enter 또는 우클릭"));
+    toolContext_->setVisible(polygonPoints == 0);
     applyGeometry_->setEnabled(previewPending && !dirtyMasks); resetGeometry_->setEnabled(previewPending);
     geometryStatus_->setText(workspaceMode_ == 3 ? I18n::text("미리보기입니다. 적용 전에는 원본 픽셀이 바뀌지 않습니다.") : canvas_->cropSelection().isEmpty() ? I18n::text("남길 영역을 선택하세요.") : QString(I18n::text("남길 크기: %1 × %2 px\nEnter로 적용 · Esc로 선택 취소")).arg(canvas_->cropSelection().width()).arg(canvas_->cropSelection().height()));
     layersPanel_->setVisible(!empty && hasMasks() && !geometry); paletteNote_->setVisible(!empty && !geometry);

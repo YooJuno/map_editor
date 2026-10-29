@@ -39,6 +39,7 @@ private:
     bool applyGeometry();
     bool geometryPending() const;
     void updateCropFields(QRect area);
+    void previewOrigin(QPointF pixel, double yawDegrees);
     void changeTheme(bool dark);
     void changeLanguage(const QString &code);
     void refreshThemeIcons();
@@ -86,7 +87,7 @@ private:
     QCheckBox *filled_;
     QDockWidget *propertiesDock_;
     QWidget *toolPanel_, *toolRail_, *propertiesPanel_;
-    QWidget *baseProperties_, *maskProperties_, *colorPanel_, *maskColorPanel_, *brushPanel_, *layersPanel_;
+    QWidget *baseProperties_, *maskProperties_, *colorPanel_, *maskColorPanel_, *brushPanel_, *layersPanel_, *resolutionPanel_, *occupancyPanel_;
     QComboBox *layer_;
     QSpinBox *speedPercent_;
     QSlider *opacity_;
@@ -113,6 +114,9 @@ private:
     QPushButton *applyGeometry_, *resetGeometry_;
     QLabel *geometryStatus_, *originHelp_, *geometryLockHint_;
     QWidget *toolDivider_;
+    QWidget *polygonControls_;
+    QPushButton *finishPolygon_;
+    QLabel *polygonCount_;
     int workspaceMode_ = 0;
     bool changingGeometry_ = false;
     QSet<QString> pending_;
