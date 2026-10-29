@@ -9,11 +9,13 @@
 #include <QMetaProperty>
 #include <QSignalBlocker>
 #include <QTranslator>
+#include <QReadWriteLock>
 
 namespace {
 class Translator : public QTranslator {
 public:
     QString code = "ko";
+    mutable QReadWriteLock lock;
     QJsonObject catalog;
     QHash<QString, QString> sources;
     Translator() {
@@ -28,6 +30,7 @@ public:
     }
     bool isEmpty() const override { return false; }
     QString translate(const char *, const char *source, const char *, int) const override {
+        const QReadLocker guard(&lock);
         const auto key = QString::fromUtf8(source);
         const auto entry = catalog.value(key).toObject();
         return entry.value(code).toString();
@@ -38,7 +41,7 @@ Translator &translator() { static Translator value; return value; }
 QString localized(const QString &value) {
     auto &t = translator();
     const auto source = t.sources.value(value, value);
-    return t.catalog.value(source).toObject().value(t.code).toString(source);
+    return t.catalog.value(source).toObject().value(I18n::language()).toString(source);
 }
 void localizeObject(QObject *object) {
     // Remember each property's source to handle translations that share a label.
@@ -68,13 +71,13 @@ void localizeObject(QObject *object) {
 }
 }
 
-QString I18n::language() { return translator().code; }
+QString I18n::language() { auto &t = translator(); const QReadLocker guard(&t.lock); return t.code; }
 void I18n::setLanguage(const QString &code) {
     const auto selected = QStringList{"ko", "en", "ja", "zh"}.contains(code) ? code : QString("ko");
     auto &t = translator();
-    if (t.code == selected && qApp->property("i18nInstalled").toBool()) return;
+    if (language() == selected && qApp->property("i18nInstalled").toBool()) return;
     QCoreApplication::removeTranslator(&t);
-    t.code = selected;
+    { const QWriteLocker guard(&t.lock); t.code = selected; }
     QCoreApplication::installTranslator(&t);
     qApp->setProperty("i18nInstalled", true);
     QLocale::setDefault(QLocale(selected == "zh" ? "zh_CN" : selected));

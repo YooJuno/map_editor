@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QPolygonF>
 #include <QTransform>
+#include <QTimer>
 
 namespace Raster {
 void stroke(QImage &image, QPoint from, QPoint to, int diameter, int gray);
@@ -16,17 +17,19 @@ public:
     enum Tool { Pen, Line, Rectangle, Fill, Hand, Picker, Polygon, Crop, Origin, Rotate };
     explicit Canvas(Document *document, QWidget *parent = nullptr);
     void setTool(Tool tool);
-    void setBrushSize(int size) { brushSize_ = size; update(); }
-    void setGray(int gray) { gray_ = gray; update(); }
+    void setBrushSize(int size) { if (brushSize_ != size) { brushSize_ = size; update(); } }
+    void setGray(int gray) { if (gray_ != gray) { gray_ = gray; update(); } }
     void setFilled(bool filled) { filled_ = filled; }
     void finishEditing();
     bool undoPolygonPoint();
     int polygonPointCount() const { return tool_ == Polygon && drawing_ ? int(polygon_.size()) : 0; }
     void cancelPolygon() { if (tool_ == Polygon && drawing_) cancelStroke(); }
     void setDocument(Document *document);
+    void setWorkQueue(WorkQueue *queue) { worker_ = queue; }
+    void setEditLocked(bool locked) { editLocked_ = locked; }
     void setMaskLayers(Document *keepout, Document *speed);
-    void setMaskOpacity(double opacity) { maskOpacity_ = qBound(0., opacity, 1.); update(); }
-    void setMaskVisible(bool keepout, bool speed) { showKeepout_ = keepout; showSpeed_ = speed; update(); }
+    void setMaskOpacity(double opacity) { opacity = qBound(0., opacity, 1.); if (maskOpacity_ != opacity) { maskOpacity_ = opacity; update(); } }
+    void setMaskVisible(bool keepout, bool speed) { if (showKeepout_ != keepout || showSpeed_ != speed) { showKeepout_ = keepout; showSpeed_ = speed; update(); } }
     void fit();
     void actualSize();
     void zoom(double factor);
@@ -37,9 +40,9 @@ public:
     bool rotationPreview() const { return rotationPreview_; }
     void setCropSelection(QRect area);
     QRect cropSelection() const { return cropSelection_; }
-    void setOriginPreview(const MapIO::Metadata &meta) { originPreview_ = true; originMeta_ = meta; update(); }
-    void clearOriginPreview() { originPreview_ = draggingOrigin_ = rotatingOrigin_ = false; update(); }
-    void setAxes(bool visible) { axes_ = visible; update(); }
+    void setOriginPreview(const MapIO::Metadata &meta) { if (!originPreview_ || originMeta_ != meta) { originPreview_ = true; originMeta_ = meta; update(); } }
+    void clearOriginPreview() { if (originPreview_ || draggingOrigin_ || rotatingOrigin_) { originPreview_ = draggingOrigin_ = rotatingOrigin_ = false; update(); } }
+    void setAxes(bool visible) { if (axes_ != visible) { axes_ = visible; update(); } }
     QPointF mapPoint(QPointF pos) const { return (pos - offset_) / scale_; }
     QPointF screenPoint(QPointF pos) const { return offset_ + pos * scale_; }
 signals:
@@ -55,6 +58,7 @@ signals:
     void originPicked(QPointF pixel);
     void originYawDragged(QPointF pivotPixel, double degrees);
     void rotationDragged(double degrees);
+    void operationFailed(const QString &message);
 protected:
     void paintEvent(QPaintEvent *) override;
     void resizeEvent(QResizeEvent *) override;
@@ -77,6 +81,10 @@ private:
     void finishStroke();
     void cancelStroke();
     void finishPolygon();
+    bool prepareDraft();
+    void restoreDraft();
+    void updateShapePreview();
+    QRect strokeBounds(QPoint from, QPoint to) const;
     bool editableVisible() const;
     QSize displaySize() const;
     Qt::Edges cropEdgesAt(QPointF position) const;
@@ -104,6 +112,11 @@ private:
     bool drawing_ = false, panning_ = false, space_ = false, inside_ = false, axes_ = true, filled_ = false;
     bool fitted_ = true;
     QImage draft_;
+    QRect draftArea_;
+    qint64 draftSourceKey_ = 0;
+    QTimer previewTimer_, draftIdleTimer_;
+    WorkQueue *worker_ = nullptr;
+    bool editLocked_ = false;
     bool rotationPreview_ = false, selectingCrop_ = false;
     QTransform previewTransform_;
     QSize previewSize_;

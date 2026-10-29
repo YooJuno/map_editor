@@ -16,6 +16,7 @@ class QMenu;
 class QSlider;
 class QToolBar;
 class QToolButton;
+class QProgressBar;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -76,6 +77,11 @@ private:
     bool applyMetadata();
     void report(const std::exception &e);
     void markField(const QString &key);
+    WorkQueue worker_;
+    bool busy_ = false;
+    QTimer busyTimer_;
+    QWidget *busyPanel_;
+    QLabel *busyLabel_;
     Document doc_;
     Document keepout_, speedMask_;
     Canvas *canvas_;

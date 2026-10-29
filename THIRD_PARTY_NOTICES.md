@@ -3,7 +3,7 @@
 The Mapwright application source is MIT licensed. Third-party components retain
 their own licenses; the application license does not replace them.
 
-* **Qt 6 Core, Gui, Widgets** (and Test for tests), The Qt Company and contributors.
+* **Qt 6 Core, Gui, Widgets, Concurrent** (and Test for tests), The Qt Company and contributors.
   Linked dynamically. Open-source Qt modules used here are available under LGPL
   v3 / GPL terms, or a commercial Qt license. Qt itself contains additional
   third-party components. See the notices and license files of the exact Qt build

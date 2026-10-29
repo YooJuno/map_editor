@@ -1460,5 +1460,85 @@
     "en": "Place at least 3 points · Esc to cancel",
     "ja": "3点以上を配置してください · Esc で取消",
     "zh": "请添加至少 3 个顶点 · Esc 取消"
+  },
+  "편집 기록을 복원할 메모리가 부족하거나 기록이 손상되었습니다.": {
+    "en": "Not enough memory to restore the edit history, or the history is damaged.",
+    "ja": "編集履歴を復元するメモリが不足しているか、履歴が破損しています。",
+    "zh": "恢复编辑历史所需的内存不足，或历史记录已损坏。"
+  },
+  "편집 기록 복원 중…": {
+    "en": "Restoring edit history…",
+    "ja": "編集履歴を復元中…",
+    "zh": "正在恢复编辑历史…"
+  },
+  "편집 기록 만드는 중…": {
+    "en": "Recording edit…",
+    "ja": "編集を記録中…",
+    "zh": "正在记录编辑…"
+  },
+  "지도 읽는 중…": {
+    "en": "Loading map…",
+    "ja": "マップを読込中…",
+    "zh": "正在读取地图…"
+  },
+  "마스크 읽는 중…": {
+    "en": "Loading mask…",
+    "ja": "マスクを読込中…",
+    "zh": "正在读取掩码…"
+  },
+  "지도 회전 중…": {
+    "en": "Rotating map…",
+    "ja": "マップを回転中…",
+    "zh": "正在旋转地图…"
+  },
+  "지도 자르는 중…": {
+    "en": "Cropping map…",
+    "ja": "マップを切り抜き中…",
+    "zh": "正在裁剪地图…"
+  },
+  "지도 여백 찾는 중…": {
+    "en": "Finding map margins…",
+    "ja": "マップの余白を検索中…",
+    "zh": "正在查找地图边缘…"
+  },
+  "3색으로 변환 중…": {
+    "en": "Converting to 3 colors…",
+    "ja": "3色に変換中…",
+    "zh": "正在转换为三色…"
+  },
+  "영역 채우는 중…": {
+    "en": "Filling area…",
+    "ja": "領域を塗りつぶし中…",
+    "zh": "正在填充区域…"
+  },
+  "지도 파일 확인 중…": {
+    "en": "Checking map files…",
+    "ja": "マップファイルを確認中…",
+    "zh": "正在检查地图文件…"
+  },
+  "지도 저장 중…": {
+    "en": "Saving map…",
+    "ja": "マップを保存中…",
+    "zh": "正在保存地图…"
+  },
+  "다른 Map Editor에서 이 파일을 저장 중입니다. 잠시 후 다시 저장하세요.": {
+    "en": "Another Map Editor is saving this file. Try again shortly.",
+    "ja": "別の Map Editor がこのファイルを保存中です。しばらくしてから再試行してください。",
+    "zh": "另一个 Map Editor 正在保存此文件。请稍后重试。"
+  },
+  "작업이 끝난 뒤 창을 닫을 수 있습니다.": {
+    "en": "You can close the window when the operation finishes.",
+    "ja": "処理が完了してからウィンドウを閉じられます。",
+    "zh": "操作完成后即可关闭窗口。"
+  },
+  "저장 잠금 파일을 만들 수 없습니다. 폴더 권한과 디스크 공간을 확인하세요: %1": {
+    "en": "Cannot create the save lock file. Check folder permissions and disk space: %1",
+    "ja": "保存用ロックファイルを作成できません。フォルダーの権限と空き容量を確認してください: %1",
+    "zh": "无法创建保存锁文件。请检查文件夹权限和磁盘空间：%1"
+  },
+  "일반 파일만 읽을 수 있습니다: %1": {
+    "en": "Only regular files can be read: %1",
+    "ja": "通常のファイルのみ読み込めます: %1",
+    "zh": "只能读取普通文件：%1"
   }
 }

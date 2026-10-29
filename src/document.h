@@ -2,6 +2,7 @@
 #include "mapio.h"
 #include <QObject>
 #include <QUndoStack>
+#include "workqueue.h"
 
 class Document : public QObject {
     Q_OBJECT
@@ -17,9 +18,10 @@ public:
     void newMap(int width, int height, double resolution);
     void replace(MapIO::Map map, bool needsSave);
     void clear();
+    void setWorkQueue(WorkQueue *queue) { worker_ = queue; }
     bool undoChangesGeometry() const;
     bool redoChangesGeometry() const;
-    void editImage(const QImage &image, const QString &label);
+    void editImage(const QImage &image, const QString &label, const QRect &changedArea = {});
     void editMetadata(const MapIO::Metadata &meta);
     void rotateImage(double clockwiseDegrees);
     void cropImage(const QRect &area);
@@ -34,7 +36,6 @@ private:
     friend class RotateCommand;
     void refreshDiskHashes();
     void push(QUndoCommand *command, qsizetype bytes);
-    bool diskMatches() const;
     MapIO::Map map_;
     QUndoStack undo_;
     bool needsPair_ = false;
@@ -42,4 +43,5 @@ private:
     qsizetype historyBytes_ = 0;
     QByteArray yamlHash_, imageHash_;
     bool allowRaw_ = false;
+    WorkQueue *worker_ = nullptr;
 };

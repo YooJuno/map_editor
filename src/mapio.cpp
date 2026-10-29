@@ -1,6 +1,10 @@
 #include "i18n.h"
 #include "mapio.h"
 #include <QDateTime>
+#include <QCryptographicHash>
+#include <QLockFile>
+#include <memory>
+#include <vector>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -15,12 +19,69 @@
 namespace {
 [[noreturn]] void fail(const QString &text) { throw std::runtime_error(text.toUtf8().constData()); }
 QByteArray readFile(const QString &path, qint64 limit) {
+    if (QFileInfo::exists(path) && !QFileInfo(path).isFile()) fail(I18n::text("일반 파일만 읽을 수 있습니다: %1").arg(path));
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) fail(QString(I18n::text("파일을 열 수 없습니다: %1\n%2")).arg(path, file.errorString()));
     if (file.size() > limit) fail(QString(I18n::text("파일 크기 제한을 초과했습니다: %1")).arg(path));
-    auto bytes = file.readAll();
-    if (file.error() != QFileDevice::NoError) fail(file.errorString());
+    QByteArray bytes; bytes.reserve(qMin(file.size(), limit));
+    while (!file.atEnd()) {
+        const auto block = file.read(qMin(qint64(256 * 1024), limit - bytes.size() + 1));
+        if (file.error() != QFileDevice::NoError) fail(file.errorString());
+        bytes.append(block);
+        if (bytes.size() > limit) fail(QString(I18n::text("파일 크기 제한을 초과했습니다: %1")).arg(path));
+    }
     return bytes;
+}
+QByteArray fileHash(const QString &path, qint64 limit) {
+    if (path.isEmpty() || !QFileInfo::exists(path)) return {};
+    if (!QFileInfo(path).isFile()) fail(I18n::text("일반 파일만 읽을 수 있습니다: %1").arg(path));
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) fail(QString(I18n::text("파일을 열 수 없습니다: %1\n%2")).arg(path, file.errorString()));
+    // A replacement too large to be a supported map cannot match our snapshot.
+    if (file.size() > limit) return QByteArray("oversize");
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    qint64 count = 0;
+    while (!file.atEnd()) {
+        const auto bytes = file.read(qMin(qint64(256 * 1024), limit - count + 1));
+        if (file.error() != QFileDevice::NoError) fail(QString(I18n::text("파일을 열 수 없습니다: %1\n%2")).arg(path, file.errorString()));
+        count += bytes.size();
+        if (count > limit) return QByteArray("oversize");
+        hash.addData(bytes);
+    }
+    return hash.result();
+}
+QByteArray pgmHeader(const QImage &image) {
+    return "P5\n# Mapwright map editor\n" + QByteArray::number(image.width()) + " " + QByteArray::number(image.height()) + "\n255\n";
+}
+void writeChunk(QSaveFile &file, QCryptographicHash &hash, const QByteArray &bytes) {
+    if (file.write(bytes) != bytes.size()) fail(I18n::text("임시 파일 기록에 실패했습니다. 기존 지도는 변경되지 않았습니다."));
+    hash.addData(bytes);
+}
+QByteArray writePgm(QSaveFile &file, const QImage &image) {
+    if (image.isNull() || image.format() != QImage::Format_Grayscale8 || qint64(image.width()) * image.height() > MapIO::MaxPixels)
+        fail(I18n::text("유효한 8-bit 지도 이미지가 없습니다."));
+    QCryptographicHash hash(QCryptographicHash::Sha256); writeChunk(file, hash, pgmHeader(image));
+    constexpr int blockSize = 256 * 1024;
+    QByteArray block; block.reserve(blockSize);
+    for (int y = 0; y < image.height(); ++y) {
+        const auto *row = reinterpret_cast<const char *>(image.constScanLine(y)); int left = image.width();
+        while (left > 0) {
+            const auto count = qMin(qsizetype(left), blockSize - block.size());
+            block.append(row, count); row += count; left -= int(count);
+            if (block.size() == blockSize) { writeChunk(file, hash, block); block.clear(); }
+        }
+    }
+    if (!block.isEmpty()) writeChunk(file, hash, block);
+    return hash.result();
+}
+void restoreFile(const QString &source, const QString &target) {
+    QFile input(source); QSaveFile output(target); output.setDirectWriteFallback(false);
+    if (!input.open(QIODevice::ReadOnly) || !output.open(QIODevice::WriteOnly)) fail(I18n::text("저장 실패: %1\n%2").arg(target, output.errorString()));
+    while (!input.atEnd()) {
+        const auto bytes = input.read(256 * 1024);
+        if (input.error() != QFileDevice::NoError || output.write(bytes) != bytes.size()) fail(I18n::text("저장 실패: %1\n%2").arg(target, output.errorString()));
+    }
+    if (!output.commit()) fail(I18n::text("저장 실패: %1\n%2").arg(target, output.errorString()));
 }
 bool space(char c) { return c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\v' || c == '\f'; }
 class Tokens {
@@ -112,8 +173,9 @@ QString validate(const Metadata &m, bool allowRaw) {
     if (m.mode != "trinary" && !(allowRaw && m.mode == "raw")) return I18n::text("원본 지도는 trinary 모드만 지원합니다. raw 마스크는 원본 지도를 연 뒤 '마스크 열기'를 사용하세요.");
     return {};
 }
-QImage readPgm(const QString &path) {
+QImage readPgm(const QString &path, QByteArray *fingerprint) {
     const auto bytes = readFile(path, MaxPixels * 12 + 1024 * 1024);
+    if (fingerprint) *fingerprint = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
     Tokens tokens(bytes);
     const auto magic = tokens.next();
     if (magic != "P2" && magic != "P5") fail(I18n::text("P2 또는 P5 PGM 파일이 아닙니다."));
@@ -148,7 +210,7 @@ QImage readPgm(const QString &path) {
 QByteArray encodePgm(const QImage &image) {
     if (image.isNull() || image.format() != QImage::Format_Grayscale8 || qint64(image.width()) * image.height() > MaxPixels)
         fail(I18n::text("유효한 8-bit 지도 이미지가 없습니다."));
-    QByteArray data = "P5\n# Mapwright map editor\n" + QByteArray::number(image.width()) + " " + QByteArray::number(image.height()) + "\n255\n";
+    QByteArray data = pgmHeader(image);
     data.reserve(data.size() + image.width() * image.height());
     for (int y = 0; y < image.height(); ++y) data.append(reinterpret_cast<const char *>(image.constScanLine(y)), image.width());
     return data;
@@ -166,13 +228,16 @@ Map load(const QString &path, bool allowRaw) {
         else {
             map.imagePath = absolute(path);
             map.yamlPath = absolute(stem + ".yaml");
-            map.image = readPgm(map.imagePath);
+            map.image = readPgm(map.imagePath, &map.disk.image);
+            map.disk.captured = true;
             map.extra = YAML::Node(YAML::NodeType::Map);
             return map;
         }
     } else fail(I18n::text(".yaml, .yml 또는 .pgm 파일을 선택하세요."));
     try {
-        map.extra = YAML::Load(readFile(yamlPath, 1024 * 1024).toStdString());
+        const auto yamlBytes = readFile(yamlPath, 1024 * 1024);
+        map.disk.yaml = QCryptographicHash::hash(yamlBytes, QCryptographicHash::Sha256);
+        map.extra = YAML::Load(yamlBytes.toStdString());
         if (!map.extra.IsMap()) fail(I18n::text("YAML 최상위는 매핑이어야 합니다."));
         const auto &root = map.extra;
         auto image = QString::fromStdString(root["image"].as<std::string>());
@@ -194,7 +259,7 @@ Map load(const QString &path, bool allowRaw) {
         if (root["mode"]) map.meta.mode = QString::fromStdString(root["mode"].as<std::string>());
         const auto error = validate(map.meta, allowRaw);
         if (!error.isEmpty()) fail(error);
-        map.image = readPgm(map.imagePath);
+        map.image = readPgm(map.imagePath, &map.disk.image); map.disk.captured = true;
         map.yamlPath = yamlPath;
         map.hasYaml = true;
     } catch (const YAML::Exception &e) { fail(QString(I18n::text("YAML 형식 오류: %1")).arg(QString::fromUtf8(e.what()))); }
@@ -218,32 +283,49 @@ QByteArray encodeYaml(const Map &map, const QString &relativeImage, bool allowRa
     if (!out.good()) fail(I18n::text("YAML 직렬화 실패"));
     return QByteArray(out.c_str()) + "\n";
 }
-SaveResult savePair(const Map &map, const QString &yamlFile, const QString &imageFile, bool allowRaw) {
+DiskSnapshot fingerprint(const QString &yamlPath, const QString &imagePath) {
+    return {fileHash(yamlPath, 1024 * 1024), fileHash(imagePath, MaxPixels * 12 + 1024 * 1024), true};
+}
+SaveResult savePair(const Map &map, const QString &yamlFile, const QString &imageFile, bool allowRaw, const DiskSnapshot &expected) {
     const auto yamlPath = absolute(yamlFile);
     const QFileInfo yamlInfo(yamlPath);
     const auto suffix = yamlInfo.suffix().toLower();
     if (suffix != "yaml" && suffix != "yml") fail(I18n::text("저장할 YAML 파일명은 .yaml 또는 .yml로 끝나야 합니다."));
     const auto imagePath = imageFile.isEmpty() ? yamlInfo.dir().filePath(yamlInfo.completeBaseName() + ".pgm") : absolute(imageFile);
     if (QFileInfo(imagePath).suffix().compare("pgm", Qt::CaseInsensitive) != 0 || samePath(yamlPath, imagePath)) fail(I18n::text("PGM과 YAML은 서로 다른 경로여야 합니다."));
-    const auto pgmBytes = encodePgm(map.image);
-    const auto yamlBytes = encodeYaml(map, QDir::fromNativeSeparators(yamlInfo.dir().relativeFilePath(imagePath)), allowRaw);
     preflight(yamlPath); preflight(imagePath);
+    QStringList targets{identity(yamlPath), identity(imagePath)}; targets.sort(Qt::CaseInsensitive);
+    std::vector<std::unique_ptr<QLockFile>> locks;
+    for (const auto &target : targets) {
+        auto lock = std::make_unique<QLockFile>(target + ".mapwright.lock"); lock->setStaleLockTime(0);
+        if (!lock->tryLock(0)) {
+            if (lock->error() == QLockFile::LockFailedError)
+                fail(I18n::text("다른 Map Editor에서 이 파일을 저장 중입니다. 잠시 후 다시 저장하세요."));
+            fail(I18n::text("저장 잠금 파일을 만들 수 없습니다. 폴더 권한과 디스크 공간을 확인하세요: %1").arg(target));
+        }
+        locks.push_back(std::move(lock));
+    }
+    if (expected.captured && fingerprint(yamlPath, imagePath) != expected)
+        fail(I18n::text("열어 둔 지도 파일이 외부에서 변경되었거나 삭제되었습니다. 다시 열거나 다른 이름으로 저장하세요."));
+    const auto yamlBytes = encodeYaml(map, QDir::fromNativeSeparators(yamlInfo.dir().relativeFilePath(imagePath)), allowRaw);
     // Prepare both files before touching either target.
     QSaveFile pgm(imagePath), yaml(yamlPath);
     pgm.setDirectWriteFallback(false); yaml.setDirectWriteFallback(false);
-    if (!pgm.open(QIODevice::WriteOnly) || !yaml.open(QIODevice::WriteOnly) || pgm.write(pgmBytes) != pgmBytes.size() || yaml.write(yamlBytes) != yamlBytes.size())
+    if (!pgm.open(QIODevice::WriteOnly) || !yaml.open(QIODevice::WriteOnly))
         fail(I18n::text("임시 파일 기록에 실패했습니다. 기존 지도는 변경되지 않았습니다."));
+    const auto imageHash = writePgm(pgm, map.image);
+    if (yaml.write(yamlBytes) != yamlBytes.size()) fail(I18n::text("임시 파일 기록에 실패했습니다. 기존 지도는 변경되지 않았습니다."));
     const auto backupDir = backup(yamlPath, imagePath);
     const bool imageExisted = QFile::exists(imagePath);
     if (!pgm.commit()) fail(I18n::text("PGM 저장에 실패했습니다. 기존 지도는 변경되지 않았습니다."));
     if (!yaml.commit()) {
         try {
-            if (imageExisted) atomicWrite(imagePath, readFile(QDir(backupDir).filePath("original.pgm"), MaxPixels * 12 + 1024 * 1024));
+            if (imageExisted) restoreFile(QDir(backupDir).filePath("original.pgm"), imagePath);
             else if (!QFile::remove(imagePath)) fail(I18n::text("새 PGM 삭제 실패"));
         } catch (const std::exception &) { fail(I18n::text("YAML 저장 및 PGM 복구에 실패했습니다. 백업에서 복원하세요: ") + backupDir); }
         fail(I18n::text("YAML 저장에 실패하여 PGM을 원상복구했습니다. 백업: ") + backupDir);
     }
-    return {yamlPath, imagePath, backupDir};
+    return {yamlPath, imagePath, backupDir, {QCryptographicHash::hash(yamlBytes, QCryptographicHash::Sha256), imageHash, true}};
 }
 double probability(int gray, const Metadata &m) { return m.negate ? gray / 255.0 : (255 - gray) / 255.0; }
 int unknownGray(const Metadata &m) {
@@ -257,11 +339,17 @@ int unknownGray(const Metadata &m) {
     return best;
 }
 QImage trinary(const QImage &image, const Metadata &m) {
-    auto result = image.copy();
+    if (image.isNull() || image.format() != QImage::Format_Grayscale8) fail(I18n::text("유효한 8-bit 지도 이미지가 없습니다."));
+    QImage result(image.size(), QImage::Format_Grayscale8);
+    if (result.isNull()) fail(I18n::text("지도 메모리를 할당할 수 없습니다."));
     const int free = m.negate ? 0 : 255, occupied = m.negate ? 255 : 0, unknown = unknownGray(m);
-    for (int y = 0; y < image.height(); ++y) for (int x = 0; x < image.width(); ++x) {
-        const auto p = probability(image.constScanLine(y)[x], m);
-        result.scanLine(y)[x] = uchar(p > m.occupied ? occupied : (p < m.free ? free : unknown));
+    uchar lookup[256];
+    for (int value = 0; value < 256; ++value) {
+        const auto p = probability(value, m); lookup[value] = uchar(p > m.occupied ? occupied : (p < m.free ? free : unknown));
+    }
+    for (int y = 0; y < image.height(); ++y) {
+        const auto *source = image.constScanLine(y); auto *target = result.scanLine(y);
+        for (int x = 0; x < image.width(); ++x) target[x] = lookup[source[x]];
     }
     return result;
 }

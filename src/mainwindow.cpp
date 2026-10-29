@@ -23,6 +23,7 @@
 #include <QPainter>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QProgressBar>
 #include <QScrollArea>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -113,7 +114,7 @@ QFrame *rule() {
 }
 }
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepout_(this, true), speedMask_(this, true), canvas_(new Canvas(&doc_)) {
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), worker_(this), doc_(this), keepout_(this, true), speedMask_(this, true), canvas_(new Canvas(&doc_)) {
     setObjectName("mainWindow");
     setMinimumSize(1060, 700);
     resize(1400, 900);
@@ -210,6 +211,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     coordinates_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     statusBar()->addPermanentWidget(coordinates_, 1);
     statusBar()->setMinimumHeight(34);
+    busyPanel_ = new QWidget; busyPanel_->setObjectName("busyPanel"); auto *busyRow = new QHBoxLayout(busyPanel_); busyRow->setContentsMargins(0, 0, 12, 0); busyRow->setSpacing(8);
+    busyLabel_ = new QLabel; busyRow->addWidget(busyLabel_);
+    auto *progress = new QProgressBar; progress->setRange(0, 0); progress->setFixedSize(60, 5); progress->setTextVisible(false); busyRow->addWidget(progress);
+    statusBar()->addPermanentWidget(busyPanel_); busyPanel_->hide(); busyTimer_.setSingleShot(true); busyTimer_.setInterval(120);
+    connect(&busyTimer_, &QTimer::timeout, this, [this] { if (busy_) busyPanel_->show(); });
     zoomLabel_ = new QLabel;
     zoomLabel_->setObjectName("zoomLabel"); zoomLabel_->setMinimumWidth(48);
     zoomLabel_->setAlignment(Qt::AlignCenter);
@@ -226,6 +232,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
         if (activeLayer_ > 0) openMaskPath(path); else openPath(path);
     });
     connect(canvas_, &Canvas::colorPicked, this, &MainWindow::sampleColor);
+    connect(canvas_, &Canvas::operationFailed, this, [this](const QString &message) { QMessageBox::critical(this, "Map Editor", message); });
     connect(canvas_, &Canvas::editingChanged, this, &MainWindow::refresh);
     connect(canvas_, &Canvas::paintRequested, this, [this] {
         if (activeLayer_ == 0 || !activeDocument()->empty()) return;
@@ -278,6 +285,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), doc_(this), keepo
     const auto geometry = QSettings().value("windowGeometry").toByteArray();
     if (!geometry.isEmpty()) restoreGeometry(geometry);
     uiReady_ = true;
+    for (auto *document : {&doc_, &keepout_, &speedMask_}) document->setWorkQueue(&worker_);
+    canvas_->setWorkQueue(&worker_);
+    connect(&worker_, &WorkQueue::busyChanged, this, [this](bool busy) {
+        busy_ = busy; canvas_->setEditLocked(busy);
+        if (busy) { busyLabel_->setText(I18n::label(worker_.operation())); busyTimer_.start(); }
+        else { busyTimer_.stop(); busyPanel_->hide(); }
+        refresh();
+    });
     I18n::localize(this); refreshThemeIcons();
     refresh();
 }
@@ -381,9 +396,12 @@ QWidget *MainWindow::makeGeometry() {
     });
     auto *automatic = new QPushButton(I18n::text("미확인 여백 자동 선택")); automatic->setObjectName("autoCrop"); crop->addWidget(automatic);
     connect(automatic, &QPushButton::clicked, this, [this] {
+        if (busy_) return;
+        try {
         const auto bounds = doc_.knownBounds();
         if (bounds.isEmpty()) coordinates_->setText(I18n::text("모두 미확인 영역입니다. 남길 영역을 직접 선택하세요."));
         else { canvas_->setCropSelection(bounds); coordinates_->setText(I18n::text("미확인 여백을 제외한 영역을 선택했습니다. 적용 전 조정할 수 있습니다.")); }
+        } catch (const std::exception &error) { report(error); }
     });
     layout->addWidget(cropPanel_);
     geometryStatus_ = new QLabel; geometryStatus_->setWordWrap(true); geometryStatus_->setObjectName("instructions"); layout->addWidget(geometryStatus_);
@@ -528,7 +546,6 @@ QWidget *MainWindow::makeLayers() {
         canvas_->setMaskOpacity(value / 100.); opacityLabel_->setText(QString::number(value) + "%"); refresh();
     });
     auto visibility = [this] {
-        canvas_->finishEditing();
         canvas_->setMaskVisible(keepoutVisible_->isChecked(), speedVisible_->isChecked()); refresh();
     };
     connect(keepoutVisible_, &QCheckBox::toggled, this, visibility);
@@ -682,10 +699,14 @@ void MainWindow::makeActions() {
     auto *map = menuBar()->addMenu(I18n::text("지도(&M)"));
     rotateAction_ = map->addAction(I18n::text("이미지 회전…"), this, &MainWindow::rotate);
     normalizeAction_ = map->addAction(I18n::text("3색으로 변환"), this, [this] {
+        if (busy_) return;
+        try {
         canvas_->finishEditing();
         if (doc_.empty() || !applyMetadata()) return;
-        doc_.editImage(MapIO::trinary(doc_.image(), doc_.meta()), I18n::text("3색 변환"));
+        const auto converted = worker_.run(I18n::text("3색으로 변환 중…"), [image = doc_.image(), meta = doc_.meta()] { return MapIO::trinary(image, meta); });
+        doc_.editImage(converted, I18n::text("3색 변환"));
         coordinates_->setText(I18n::text("3색으로 변환했습니다."));
+        } catch (const std::exception &error) { report(error); }
     });
 
     auto *view = menuBar()->addMenu(I18n::text("보기(&V)")); viewMenu_ = view;
@@ -719,7 +740,8 @@ void MainWindow::makeActions() {
 }
 
 void MainWindow::selectTool(int tool) {
-    if (workspaceMode_ >= 3) selectWorkspace(activeLayer_);
+    if (busy_) return;
+    if (workspaceMode_ >= 3) { selectWorkspace(activeLayer_); if (workspaceMode_ >= 3) return; }
     if (tool == Canvas::Polygon && activeLayer_ == 0) return;
     canvas_->finishEditing();
     currentTool_ = tool;
@@ -738,29 +760,38 @@ void MainWindow::selectTool(int tool) {
 }
 
 void MainWindow::undoEdit() {
+    if (busy_) return;
+    try {
     if (geometryPending()) { resetGeometry(); return; }
     if (canvas_->undoPolygonPoint()) return;
     canvas_->finishEditing();
     if (activeLayer_ == 0 && !pending_.isEmpty()) revertMetadata();
     else if (!(activeLayer_ == 0 && hasDirtyMasks() && doc_.undoChangesGeometry())) {
-        if (activeLayer_ == 0 && doc_.undoChangesGeometry()) detachCleanMasks();
+        const bool geometry = activeLayer_ == 0 && doc_.undoChangesGeometry();
         activeDocument()->undo()->undo();
+        if (geometry) detachCleanMasks();
     }
     if (workspaceMode_ >= 3) resetGeometry();
+    } catch (const std::exception &error) { report(error); }
 }
 void MainWindow::redoEdit() {
+    if (busy_) return;
+    try {
     canvas_->finishEditing();
     if (pending_.isEmpty() && !(activeLayer_ == 0 && hasDirtyMasks() && doc_.redoChangesGeometry())) {
-        if (activeLayer_ == 0 && doc_.redoChangesGeometry()) detachCleanMasks();
+        const bool geometry = activeLayer_ == 0 && doc_.redoChangesGeometry();
         activeDocument()->undo()->redo();
+        if (geometry) detachCleanMasks();
     }
     if (workspaceMode_ >= 3) resetGeometry();
+    } catch (const std::exception &error) { report(error); }
 }
 void MainWindow::revertMetadata() {
+    if (busy_) return;
     pending_.clear(); refreshFields(); refresh();
 }
 void MainWindow::markField(const QString &key) {
-    if (syncing_ || doc_.empty()) return;
+    if (syncing_ || busy_ || doc_.empty()) return;
     const bool original = key == "negate" ? negate_->currentIndex() == negate_->property("baseline").toInt()
         : findChild<QDoubleSpinBox *>(key)->value() == findChild<QDoubleSpinBox *>(key)->property("baseline").toDouble();
     if (original) pending_.remove(key); else pending_.insert(key);
@@ -806,11 +837,13 @@ void MainWindow::refreshPalette() {
     for (int i = 0; i < 3; ++i) {
         auto *button = colors_->button(i);
         button->setToolTip(QString("%1 — %2 (%3)").arg(QStringList{I18n::text("흰색"), I18n::text("검정"), I18n::text("회색")}[i], roles[i]).arg(values[i]));
-        QPixmap swatch(48, 48); swatch.fill(Qt::transparent);
-        QPainter painter(&swatch); painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(QPen(QColor("#929aa7"), 1.5)); painter.setBrush(QColor(shades[i]));
-        painter.drawEllipse(QRectF(2, 2, 44, 44)); painter.end();
-        button->setIcon(QIcon(swatch));
+        if (!button->property("swatchValue").isValid() || button->property("swatchValue").toInt() != values[i]) {
+            QPixmap swatch(48, 48); swatch.fill(Qt::transparent);
+            QPainter painter(&swatch); painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(QPen(QColor("#929aa7"), 1.5)); painter.setBrush(QColor(shades[i]));
+            painter.drawEllipse(QRectF(2, 2, 44, 44)); painter.end();
+            button->setIcon(QIcon(swatch)); button->setProperty("swatchValue", values[i]);
+        }
     }
     paletteNote_->setText(QString(I18n::text("회색 %1 (%2)%3")).arg(gray).arg(grayRole).arg(sampledGray_ >= 0 ? I18n::text(" · 추출값") : ""));
     resetGray_->setVisible(sampledGray_ >= 0);
@@ -860,14 +893,15 @@ void MainWindow::resetGeometry() {
     refresh();
 }
 bool MainWindow::applyGeometry() {
+    if (busy_) return false;
     if (!geometryPending()) return true;
     if (hasDirtyMasks() || !applyMetadata()) return false;
     const auto angle = rotationAngle_->value(); const auto crop = canvas_->cropSelection();
     canvas_->clearRotationPreview();
     try {
-        detachCleanMasks();
         if (workspaceMode_ == 3) doc_.rotateImage(angle);
         else doc_.cropImage(crop);
+        detachCleanMasks();
         resetGeometry(); canvas_->fit(); coordinates_->setText(workspaceMode_ == 3 ? I18n::text("회전을 적용했습니다.") : I18n::text("지도를 자르고 원점을 보정했습니다."));
         return true;
     } catch (const std::exception &error) {
@@ -876,6 +910,7 @@ bool MainWindow::applyGeometry() {
     }
 }
 void MainWindow::selectWorkspace(int mode) {
+    if (busy_) return;
     if (doc_.empty()) { workspaces_->button(workspaceMode_)->setChecked(true); return; }
     if (mode == workspaceMode_) { propertiesDock_->show(); canvas_->setFocus(); return; }
     canvas_->finishEditing();
@@ -891,6 +926,7 @@ void MainWindow::selectWorkspace(int mode) {
         for (auto *mask : {&keepout_, &speedMask_}) if (mask->dirty() && !saveDocument(mask)) return;
         if (hasDirtyMasks()) return;
     }
+    if (workspaceMode_ == 5) revertMetadata();
     if (!applyMetadata()) { workspaces_->button(workspaceMode_)->setChecked(true); return; }
     const int target = mode <= 2 ? mode : 0;
     if (target != activeLayer_) layer_->setCurrentIndex(target);
@@ -905,10 +941,12 @@ void MainWindow::selectWorkspace(int mode) {
 }
 
 void MainWindow::selectLayer(int index) {
+    if (busy_) return;
     if (changingLayers_ || index == activeLayer_) return;
     canvas_->finishEditing();
     auto resetSelection = [this] { QSignalBlocker block(layer_); layer_->setCurrentIndex(activeLayer_); };
     if (doc_.empty()) { resetSelection(); return; }
+    if (workspaceMode_ == 5) revertMetadata();
     if (activeLayer_ == 0 && !applyMetadata()) { resetSelection(); return; }
     try {
         auto *target = index == 1 ? &keepout_ : index == 2 ? &speedMask_ : &doc_;
@@ -931,15 +969,17 @@ void MainWindow::selectLayer(int index) {
 }
 
 void MainWindow::openMask() {
+    if (busy_) return;
     if (activeLayer_ == 0 || doc_.empty()) return;
     const auto path = QFileDialog::getOpenFileName(this, I18n::text("마스크 YAML 열기"), QSettings().value("lastFolder", QDir::homePath()).toString(), I18n::text("YAML 마스크 (*.yaml *.yml)"));
     if (!path.isEmpty()) openMaskPath(path);
 }
 void MainWindow::openMaskPath(const QString &path) {
+    if (busy_) return;
     if (activeLayer_ == 0 || doc_.empty()) return;
     canvas_->finishEditing();
     try {
-        auto map = Mask::load(path, doc_.map(), activeLayer_ == 1 ? Mask::Keepout : Mask::SpeedPercent);
+        auto map = worker_.run(I18n::text("마스크 읽는 중…"), [path, base = doc_.map(), kind = activeLayer_ == 1 ? Mask::Keepout : Mask::SpeedPercent] { return Mask::load(path, base, kind); });
         auto *target = activeDocument();
         auto *other = activeLayer_ == 1 ? &speedMask_ : &keepout_;
         Mask::checkSaveTarget(map.yamlPath, map.imagePath, {other->map()});
@@ -952,16 +992,22 @@ void MainWindow::openMaskPath(const QString &path) {
     } catch (const std::exception &error) { report(error); }
 }
 void MainWindow::openMaskPath(const QString &path, Mask::Kind kind) {
+    if (busy_) return;
     layer_->setCurrentIndex(kind == Mask::Keepout ? 1 : 2);
     if (activeLayer_ == (kind == Mask::Keepout ? 1 : 2)) openMaskPath(path);
 }
 void MainWindow::clearMask() {
+    if (busy_) return;
     if (activeLayer_ == 0 || activeDocument()->empty()) return;
     canvas_->finishEditing();
+    try {
     auto blank = activeDocument()->image().copy(); blank.fill(0);
+    if (blank.isNull()) throw std::runtime_error(I18n::utf8("메모리 할당 실패"));
     activeDocument()->editImage(blank, I18n::text("모든 구역 지우기"));
+    } catch (const std::exception &error) { report(error); }
 }
 bool MainWindow::maybeSaveMasks() {
+    if (busy_) return false;
     canvas_->finishEditing();
     if (!keepout_.dirty() && !speedMask_.dirty()) return true;
     const auto answer = QMessageBox::warning(this, I18n::text("저장하지 않은 마스크"), I18n::text("마스크의 변경 내용을 저장할까요?"), QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
@@ -971,6 +1017,7 @@ bool MainWindow::maybeSaveMasks() {
     return true;
 }
 void MainWindow::closeMasks() {
+    if (busy_) return;
     if (!maybeSaveMasks()) return;
     changingLayers_ = true;
     keepout_.clear(); speedMask_.clear(); activeLayer_ = 0;
@@ -1000,6 +1047,7 @@ void MainWindow::checkSavePaths(Document *document, const QString &yamlPath) {
     Mask::checkSaveTarget(yamlPath, imagePath, protectedMaps);
 }
 bool MainWindow::saveAll() {
+    if (busy_) return false;
     canvas_->finishEditing();
     if (!applyGeometry()) return false;
     if (!applyMetadata()) return false;
@@ -1039,14 +1087,14 @@ void MainWindow::refresh() {
     fileLabel_->setToolTip(document->map().yamlPath);
     documentTitle_->setText(empty ? "" : documentTitle_->fontMetrics().elidedText(name, Qt::ElideMiddle, 260));
     documentTitle_->setToolTip(document->map().yamlPath);
-    documentState_->setText(empty ? "" : geometryPending() ? I18n::text("미리보기 · 적용 전") : activeChanged ? I18n::text("수정됨") : mask && !maskInUse(*document) ? I18n::text("구역 없음") : I18n::text("저장됨"));
+    documentState_->setText(empty ? "" : geometryPending() || (workspaceMode_ == 5 && !pending_.isEmpty()) ? I18n::text("미리보기 · 적용 전") : activeChanged ? I18n::text("수정됨") : mask && !maskInUse(*document) ? I18n::text("구역 없음") : I18n::text("저장됨"));
     if (geometry) toolTitle_->setText(workspaceMode_ == 3 ? I18n::text("회전") : workspaceMode_ == 4 ? I18n::text("자르기") : I18n::text("원점 이동"));
     toolContext_->setText(geometry ? (workspaceMode_ == 3 ? I18n::text("시계 방향이 +각도입니다.") : workspaceMode_ == 4 ? I18n::text("남길 영역을 드래그하세요.") : I18n::text("월드 좌표 (0, 0)의 위치를 클릭하거나 드래그하세요.")) : mask ? (activeLayer_ == 1 ? I18n::text("진입 금지 구역") : QString(I18n::text("최대 속도의 %1%")).arg(speedPercent_->value())) : "");
     details_->setText(empty ? QString(I18n::text("지도를 열면 레이어와 좌표를\n여기에서 조정할 수 있습니다.")) : QString("%1 × %2 px\n%3 × %4 m%5").arg(doc_.image().width()).arg(doc_.image().height())
         .arg(doc_.image().width() * doc_.meta().resolution, 0, 'f', 2).arg(doc_.image().height() * doc_.meta().resolution, 0, 'f', 2)
         .arg(mask || document->map().hasYaml ? "" : I18n::text("\nYAML 없음 (저장 시 생성)")));
     const bool visible = !mask || ((activeLayer_ == 1 ? keepoutVisible_->isChecked() : speedVisible_->isChecked()) && opacity_->value() > 0);
-    toolPanel_->setEnabled(!empty && visible);
+    toolPanel_->setEnabled(!empty && (visible || canvas_->polygonPointCount() > 0));
     toolTitle_->setVisible(geometry); toolDivider_->setVisible(geometry);
     drawingRail_->setVisible(!geometry);
     geometryLockHint_->setVisible(empty || dirtyMasks);
@@ -1120,9 +1168,20 @@ void MainWindow::refresh() {
     apply_->setEnabled(!empty && !pending_.isEmpty() && error.isEmpty());
     revert_->setEnabled(!pending_.isEmpty());
     refreshPalette();
+    if (busy_) {
+        documentState_->setText(I18n::label(worker_.operation()));
+        busyLabel_->setText(I18n::label(worker_.operation()));
+        toolPanel_->setEnabled(false); propertiesPanel_->setEnabled(false);
+        for (auto *button : workspaces_->buttons()) button->setEnabled(false);
+        for (auto *button : tools_->buttons()) button->setEnabled(false);
+        for (auto *action : {openAction_, saveAction_, saveAsAction_, saveAllAction_, undoAction_, redoAction_, normalizeAction_, rotateAction_}) action->setEnabled(false);
+        saveOptionsButton_->setEnabled(false);
+    } else openAction_->setEnabled(true);
+    menuBar()->setEnabled(!busy_);
 }
 
 bool MainWindow::applyMetadata() {
+    if (busy_) return false;
     canvas_->finishEditing();
     for (auto *box : {resolution_, x_, y_, yaw_, free_, occupied_}) box->interpretText();
     if (pending_.isEmpty() || doc_.empty()) return true;
@@ -1140,11 +1199,13 @@ bool MainWindow::applyMetadata() {
 }
 void MainWindow::report(const std::exception &error) { QMessageBox::critical(this, "Map Editor", QString::fromUtf8(error.what())); }
 void MainWindow::open() {
+    if (busy_) return;
     const auto path = QFileDialog::getOpenFileName(this, I18n::text("지도 열기"), QSettings().value("lastFolder", QDir::homePath()).toString(),
         I18n::text("지도 (*.yaml *.yml *.pgm *.PGM *.YAML *.YML);;모든 파일 (*)"));
     if (!path.isEmpty()) openPath(path);
 }
 void MainWindow::openPath(const QString &path) {
+    if (busy_) return;
     if (!maybeSave()) return;
     try {
         doc_.open(path);
@@ -1156,6 +1217,7 @@ void MainWindow::rotate() {
     selectWorkspace(3);
 }
 bool MainWindow::save(bool as) {
+    if (busy_) return false;
     canvas_->finishEditing();
     if (!applyGeometry()) return false;
     if (doc_.empty() || !applyMetadata()) return false;
@@ -1163,6 +1225,7 @@ bool MainWindow::save(bool as) {
     return saveDocument(activeDocument(), as);
 }
 bool MainWindow::saveDocument(Document *document, bool as) {
+    if (busy_) return false;
     if (document->empty()) return true;
     const bool mask = document != &doc_;
     QString path;
@@ -1189,6 +1252,7 @@ bool MainWindow::saveDocument(Document *document, bool as) {
     } catch (const std::exception &error) { report(error); return false; }
 }
 bool MainWindow::maybeSave() {
+    if (busy_) return false;
     canvas_->finishEditing();
     for (auto *box : {resolution_, x_, y_, yaw_, free_, occupied_}) box->interpretText();
     if (!doc_.dirty() && !keepout_.dirty() && !speedMask_.dirty() && pending_.isEmpty() && !geometryPending()) return true;
@@ -1198,6 +1262,7 @@ bool MainWindow::maybeSave() {
     return answer == QMessageBox::Discard;
 }
 void MainWindow::closeEvent(QCloseEvent *event) {
+    if (busy_) { statusBar()->showMessage(I18n::text("작업이 끝난 뒤 창을 닫을 수 있습니다."), 5000); event->ignore(); return; }
     if (maybeSave()) { QSettings().setValue("windowGeometry", saveGeometry()); event->accept(); }
     else event->ignore();
 }

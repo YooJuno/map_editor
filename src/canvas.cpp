@@ -15,6 +15,7 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <cstring>
 
 namespace { constexpr double Rad = 3.14159265358979323846 / 180.; }
 
@@ -36,32 +37,53 @@ bool clipSegment(QPoint &a, QPoint &b, const QRectF &bounds) {
     b = {qRound(start.x() + high * dx), qRound(start.y() + high * dy)};
     return true;
 }
-void dot(QImage &im, QPoint p, int d, int gray) {
-    d = qMax(1, d);
-    // The center of an odd diameter lies at a pixel center; even lies on an edge.
-    const double centerX = p.x() + (d % 2 ? .5 : 0), centerY = p.y() + (d % 2 ? .5 : 0), r = d / 2.;
-    const int y0 = qMax(0, int(std::floor(centerY - r))), y1 = qMin(im.height() - 1, int(std::ceil(centerY + r)) - 1);
-    for (int y = y0; y <= y1; ++y) {
-        const auto dy = y + .5 - centerY;
-        const auto span = std::sqrt(qMax(0., r * r - dy * dy));
-        const int left = qMax(0, int(std::ceil(centerX - span - .5)));
-        const int right = qMin(im.width() - 1, int(std::floor(centerX + span - .5)));
-        if (left <= right) std::fill(im.scanLine(y) + left, im.scanLine(y) + right + 1, uchar(gray));
+struct BrushSpan { int y, left, right; };
+const std::vector<BrushSpan> &brushSpans(int diameter) {
+    thread_local int cachedDiameter = 0;
+    thread_local std::vector<BrushSpan> spans;
+    if (diameter == cachedDiameter) return spans;
+    spans.clear(); spans.reserve(diameter);
+    const double center = diameter % 2 ? .5 : 0., radius = diameter / 2.;
+    for (int y = -diameter / 2; y < -diameter / 2 + diameter; ++y) {
+        const double dy = y + .5 - center, span = std::sqrt(qMax(0., radius * radius - dy * dy));
+        spans.push_back({y, int(std::ceil(center - span - .5)), int(std::floor(center + span - .5))});
     }
+    cachedDiameter = diameter; return spans;
 }
 }
 void stroke(QImage &im, QPoint from, QPoint to, int d, int gray) {
-    const double margin = qMax(1, d) / 2. + 1;
+    if (im.isNull()) return;
+    d = qMax(1, d);
+    const double margin = d / 2. + 1;
     if (!clipSegment(from, to, QRectF(0, 0, im.width() - 1, im.height() - 1).adjusted(-margin, -margin, margin, margin))) return;
+    const auto &brush = brushSpans(d);
+    // Bresenham centers are monotonic. Merge each scanline's overlapping stamps,
+    // then write it once when the next row evicts it from this bounded ring.
+    struct Row { int y = -1, left = 0, right = -1; };
+    std::vector<Row> rows(size_t(qMin(d, im.height())));
+    auto *data = im.bits(); const auto stride = im.bytesPerLine();
+    auto flush = [&](Row &row) {
+        if (row.y >= 0 && row.left <= row.right)
+            std::fill(data + qsizetype(row.y) * stride + row.left, data + qsizetype(row.y) * stride + row.right + 1, uchar(gray));
+    };
     int x = from.x(), y = from.y(), dx = std::abs(to.x() - x), sx = x < to.x() ? 1 : -1;
     int dy = -std::abs(to.y() - y), sy = y < to.y() ? 1 : -1, err = dx + dy;
     for (;;) {
-        dot(im, {x, y}, d, gray);
+        for (const auto &span : brush) {
+            const int line = y + span.y;
+            if (uint(line) >= uint(im.height())) continue;
+            const int left = qMax(0, x + span.left), right = qMin(im.width() - 1, x + span.right);
+            if (left > right) continue;
+            auto &row = rows[size_t(line) % rows.size()];
+            if (row.y != line) { flush(row); row = {line, left, right}; }
+            else { row.left = qMin(row.left, left); row.right = qMax(row.right, right); }
+        }
         if (x == to.x() && y == to.y()) break;
         const int e = 2 * err;
         if (e >= dy) { err += dy; x += sx; }
         if (e <= dx) { err += dx; y += sy; }
     }
+    for (auto &row : rows) flush(row);
 }
 void rectangle(QImage &im, QPoint a, QPoint b, int d, int gray, bool filled) {
     const auto outline = QRect(a, b).normalized();
@@ -101,9 +123,10 @@ void polygon(QImage &im, const QPolygonF &points, int gray) {
     if (points.size() < 3) return;
     const auto bounds = points.boundingRect();
     const int top = qMax(0, int(std::floor(bounds.top()))), bottom = qMin(im.height() - 1, int(std::ceil(bounds.bottom())));
+    std::vector<double> intersections; intersections.reserve(size_t(points.size()));
     for (int y = top; y <= bottom; ++y) {
         const double scan = y + .5;
-        std::vector<double> intersections;
+        intersections.clear();
         for (qsizetype i = 0; i < points.size(); ++i) {
             const auto &a = points[i], &b = points[(i + 1) % points.size()];
             if ((a.y() > scan) != (b.y() > scan))
@@ -123,12 +146,20 @@ Canvas::Canvas(Document *doc, QWidget *parent) : QWidget(parent), doc_(doc), bas
     setObjectName("mapCanvas"); setMinimumSize(300, 300); setMouseTracking(true); setFocusPolicy(Qt::StrongFocus); setAcceptDrops(true);
     connect(doc, &Document::loaded, this, [this] { cancelStroke(); fit(); });
     connect(doc, &Document::changed, this, qOverload<>(&Canvas::update));
+    previewTimer_.setSingleShot(true); previewTimer_.setInterval(16);
+    connect(&previewTimer_, &QTimer::timeout, this, &Canvas::updateShapePreview);
+    draftIdleTimer_.setSingleShot(true); draftIdleTimer_.setInterval(30000);
+    connect(&draftIdleTimer_, &QTimer::timeout, this, [this] { if (!drawing_) { draft_ = {}; draftSourceKey_ = 0; } });
 }
 void Canvas::setTool(Tool tool) {
     finishEditing(); selectingCrop_ = false; stopGeometryDrag(); tool_ = tool; setToolTip({});
+    if (tool >= Crop) { draft_ = {}; draftArea_ = {}; draftSourceKey_ = 0; draftIdleTimer_.stop(); }
     setCursor(tool == Hand || tool == Rotate ? Qt::OpenHandCursor : Qt::CrossCursor); update();
 }
-void Canvas::setDocument(Document *document) { finishEditing(); doc_ = document ? document : base_; update(); }
+void Canvas::setDocument(Document *document) {
+    finishEditing(); doc_ = document ? document : base_;
+    draft_ = {}; draftArea_ = {}; draftSourceKey_ = 0; draftIdleTimer_.stop(); update();
+}
 void Canvas::setMaskLayers(Document *keepout, Document *speed) {
     keepout_ = keepout; speed_ = speed;
     for (auto *layer : {keepout, speed}) if (layer) connect(layer, &Document::changed, this, qOverload<>(&Canvas::update));
@@ -233,11 +264,54 @@ void Canvas::updateCropCursor(QPointF position) {
     if (edges) setCursor(cropResizeCursor(edges));
     else setCursor(cropSelection_ != base_->image().rect() && cropSelection_.contains(pixelPoint(position)) ? Qt::SizeAllCursor : Qt::CrossCursor);
 }
+bool Canvas::prepareDraft() {
+    draftIdleTimer_.stop(); previewTimer_.stop();
+    if (draft_.size() != doc_->image().size() || draft_.format() != QImage::Format_Grayscale8) draft_ = doc_->image().copy();
+    else if (draftSourceKey_ != doc_->image().cacheKey()) {
+        const auto *source = doc_->image().constBits(); auto *target = draft_.bits();
+        if (!target) { draft_ = {}; emit operationFailed(I18n::text("지도 메모리를 할당할 수 없습니다.")); return false; }
+        for (int y = 0; y < draft_.height(); ++y)
+            std::memcpy(target + qsizetype(y) * draft_.bytesPerLine(), source + qsizetype(y) * doc_->image().bytesPerLine(), size_t(draft_.width()));
+    }
+    if (draft_.isNull()) { emit operationFailed(I18n::text("지도 메모리를 할당할 수 없습니다.")); return false; }
+    draftSourceKey_ = doc_->image().cacheKey(); draftArea_ = {};
+    return true;
+}
+void Canvas::restoreDraft() {
+    if (draftArea_.isEmpty()) return;
+    if (draft_.isNull()) { draftArea_ = {}; draftSourceKey_ = 0; return; }
+    if (draftSourceKey_ != doc_->image().cacheKey() || draft_.size() != doc_->image().size()) { prepareDraft(); return; }
+    auto *target = draft_.bits(); const auto *source = doc_->image().constBits();
+    if (!target) { draft_ = {}; draftArea_ = {}; draftSourceKey_ = 0; return; }
+    for (int y = draftArea_.top(); y <= draftArea_.bottom(); ++y)
+        std::memcpy(target + qsizetype(y) * draft_.bytesPerLine() + draftArea_.x(), source + qsizetype(y) * doc_->image().bytesPerLine() + draftArea_.x(), size_t(draftArea_.width()));
+    draftArea_ = {};
+}
+QRect Canvas::strokeBounds(QPoint from, QPoint to) const {
+    const int margin = brushSize_ / 2 + 2;
+    return QRect(from, to).normalized().adjusted(-margin, -margin, margin, margin).intersected(doc_->image().rect());
+}
+void Canvas::updateShapePreview() {
+    if (!drawing_ || doc_->empty()) return;
+    previewTimer_.stop(); restoreDraft();
+    if (draft_.isNull()) return;
+    if (tool_ == Polygon) {
+        auto points = polygon_;
+        if (inside_ && !points.isEmpty() && polygonHover_ != points.last()) points << polygonHover_;
+        draftArea_ = points.boundingRect().intersected(QRectF(doc_->image().rect())).toAlignedRect().intersected(doc_->image().rect());
+        Raster::polygon(draft_, points, activeGray());
+    } else {
+        draftArea_ = tool_ == Rectangle && filled_ ? QRect(start_, last_).normalized().intersected(doc_->image().rect()) : strokeBounds(start_, last_);
+        if (tool_ == Line) Raster::stroke(draft_, start_, last_, brushSize_, activeGray());
+        else if (tool_ == Rectangle) Raster::rectangle(draft_, start_, last_, brushSize_, activeGray(), filled_);
+    }
+    update();
+}
 bool Canvas::undoPolygonPoint() {
     if (tool_ != Polygon || !drawing_ || polygon_.isEmpty()) return false;
     polygon_.removeLast();
     if (polygon_.isEmpty()) cancelStroke();
-    else { draft_ = doc_->image().copy(); Raster::polygon(draft_, polygon_, activeGray()); emit editingChanged(); update(); }
+    else { polygonHover_ = polygon_.last(); updateShapePreview(); emit editingChanged(); }
     return true;
 }
 void Canvas::fit() {
@@ -297,13 +371,13 @@ void Canvas::paintEvent(QPaintEvent *) {
         }
         return;
     }
-    const auto &image = drawing_ && doc_ == base_ ? draft_ : base_->image();
+    const auto &image = drawing_ && doc_ == base_ && !draft_.isNull() ? draft_ : base_->image();
     const QRectF target(offset_, QSizeF(image.size()) * scale_);
     p.setRenderHint(QPainter::SmoothPixmapTransform, false);
     p.drawImage(target, image);
     auto overlay = [&](Document *layer, bool visible, bool speed) {
         if (!layer || layer->empty() || !visible || layer->image().size() != image.size()) return;
-        const auto &mask = drawing_ && doc_ == layer ? draft_ : layer->image();
+        const auto &mask = drawing_ && doc_ == layer && !draft_.isNull() ? draft_ : layer->image();
         QImage indexed(mask.constBits(), mask.width(), mask.height(), mask.bytesPerLine(), QImage::Format_Indexed8);
         QList<QRgb> palette(256, qRgba(0, 0, 0, 0));
         for (int i = 1; i <= 100; ++i)
@@ -413,7 +487,7 @@ bool Canvas::insideImage(QPointF position) const {
 void Canvas::mousePressEvent(QMouseEvent *e) {
     setFocus(); if (base_->empty()) return;
     mouse_ = e->position(); inside_ = true;
-    if (e->button() == Qt::RightButton && tool_ == Polygon && drawing_) {
+    if (!editLocked_ && e->button() == Qt::RightButton && tool_ == Polygon && drawing_) {
         if (polygon_.size() >= 3) finishPolygon();
         e->accept(); return;
     }
@@ -421,7 +495,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         stopGeometryDrag();
         panning_ = true; fitted_ = false; panStart_ = e->position(); setCursor(Qt::ClosedHandCursor); return;
     }
-    if (e->button() != Qt::LeftButton || !editableVisible()) return;
+    if (e->button() != Qt::LeftButton || editLocked_ || !editableVisible()) return;
     if (tool_ == Rotate) {
         if (!rotationPreview_) return;
         rotationDragCenter_ = rotationCenter(); const auto delta = e->position() - rotationDragCenter_;
@@ -460,22 +534,33 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     }
     if (doc_->empty()) { emit paintRequested(); if (doc_->empty()) return; }
     if (tool_ == Polygon) {
-        if (!drawing_) { drawing_ = true; draft_ = doc_->image().copy(); }
+        if (!drawing_) { if (!prepareDraft()) return; drawing_ = true; }
         const auto point = mapPoint(e->position());
         if (polygon_.size() >= 3 && QLineF(screenPoint(polygon_.first()), e->position()).length() <= 7) { finishPolygon(); return; }
         if (polygon_.isEmpty() || QLineF(polygon_.last(), point).length() > .01) polygon_ << point;
-        polygonHover_ = point; draft_ = doc_->image().copy(); Raster::polygon(draft_, polygon_, activeGray());
+        polygonHover_ = point; updateShapePreview();
         emit editingChanged(); update(); return;
     }
-    drawing_ = true; start_ = last_ = pixelPoint(e->position()); draft_ = doc_->image().copy();
+    if (!prepareDraft()) return;
+    drawing_ = true; start_ = last_ = pixelPoint(e->position());
     emit editingChanged();
-    if (tool_ == Fill) { Raster::flood(draft_, start_, activeGray()); finishStroke(); }
-    else if (tool_ == Pen) Raster::stroke(draft_, start_, start_, brushSize_, activeGray());
+    if (tool_ == Fill) {
+        draftArea_ = doc_->image().rect();
+        try {
+            if (worker_) {
+                auto image = std::move(draft_); draft_ = {};
+                draft_ = worker_->run(I18n::text("영역 채우는 중…"), [image = std::move(image), start = start_, gray = activeGray()]() mutable { Raster::flood(image, start, gray); return image; });
+            } else Raster::flood(draft_, start_, activeGray());
+            finishStroke();
+        } catch (const std::exception &error) { cancelStroke(); emit operationFailed(QString::fromUtf8(error.what())); }
+    }
+    else if (tool_ == Pen) { draftArea_ = strokeBounds(start_, start_); Raster::stroke(draft_, start_, start_, brushSize_, activeGray()); }
     update();
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
     mouse_ = e->position(); inside_ = true;
     if (base_->empty()) return;
+    if (editLocked_) { if (panning_) { offset_ += e->position() - panStart_; panStart_ = e->position(); update(); } return; }
     if (!rotationPreview_) emit positionChanged(mapPoint(e->position()));
     if (panning_) { offset_ += e->position() - panStart_; panStart_ = e->position(); }
     else if (rotatingImage_ || rotatingOrigin_) updateAngleDrag(e->position(), e->modifiers());
@@ -506,24 +591,22 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     }
     else if (drawing_ && tool_ == Polygon) {
         polygonHover_ = mapPoint(e->position());
-        draft_ = doc_->image().copy();
-        auto preview = polygon_; preview << polygonHover_;
-        Raster::polygon(draft_, preview, activeGray());
+        if (!previewTimer_.isActive()) previewTimer_.start();
     } else if (drawing_) {
         const auto current = pixelPoint(e->position());
-        if (tool_ == Pen) Raster::stroke(draft_, last_, current, brushSize_, activeGray());
-        else {
-            draft_ = doc_->image().copy();
-            if (tool_ == Line) Raster::stroke(draft_, start_, current, brushSize_, activeGray());
-            else if (tool_ == Rectangle) Raster::rectangle(draft_, start_, current, brushSize_, activeGray(), filled_);
+        if (tool_ == Pen) {
+            draftArea_ = draftArea_.united(strokeBounds(last_, current));
+            Raster::stroke(draft_, last_, current, brushSize_, activeGray());
         }
         last_ = current;
+        if (tool_ == Line || tool_ == Rectangle) if (!previewTimer_.isActive()) previewTimer_.start();
     }
     if (tool_ == Crop && !selectingCrop_ && !panning_ && !space_) updateCropCursor(e->position());
     if ((tool_ == Rotate || tool_ == Origin) && !panning_ && !space_) updateGeometryCursor(e->position());
     update();
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
+    if (editLocked_ && !panning_) return;
     if (e->button() == Qt::LeftButton && (draggingOrigin_ || rotatingOrigin_ || rotatingImage_)) {
         mouseMoveEvent(e); stopGeometryDrag(); updateGeometryCursor(e->position()); update(); return;
     }
@@ -534,24 +617,35 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton && drawing_ && tool_ != Polygon) { mouseMoveEvent(e); finishStroke(); }
 }
 void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
+    if (editLocked_) return;
     if (tool_ == Polygon && e->button() == Qt::LeftButton && drawing_) finishPolygon();
     else QWidget::mouseDoubleClickEvent(e);
 }
 void Canvas::finishPolygon() {
     if (!drawing_) return;
     if (polygon_.size() < 3) { cancelStroke(); return; }
-    draft_ = doc_->image().copy(); Raster::polygon(draft_, polygon_, activeGray());
+    polygonHover_ = polygon_.last(); updateShapePreview();
     finishStroke();
 }
 void Canvas::finishStroke() {
     if (!drawing_) return;
+    previewTimer_.stop();
+    if (tool_ == Line || tool_ == Rectangle) updateShapePreview();
     drawing_ = false;
     const QStringList names{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("영역 채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형")};
-    doc_->editImage(draft_, names[int(tool_)]); draft_ = {}; polygon_.clear(); emit editingChanged(); update();
+    try { if (!draftArea_.isEmpty()) doc_->editImage(draft_, names[int(tool_)], draftArea_); }
+    catch (const std::exception &error) { restoreDraft(); emit operationFailed(QString::fromUtf8(error.what())); }
+    draftSourceKey_ = doc_->image().cacheKey(); draftArea_ = {}; polygon_.clear(); draftIdleTimer_.start(); emit editingChanged(); update();
 }
-void Canvas::cancelStroke() { drawing_ = panning_ = space_ = false; draft_ = {}; polygon_.clear(); emit editingChanged(); update(); }
+void Canvas::cancelStroke() {
+    previewTimer_.stop(); drawing_ = panning_ = space_ = false;
+    if (draftSourceKey_ != doc_->image().cacheKey()) { draft_ = {}; draftArea_ = {}; draftSourceKey_ = 0; }
+    else restoreDraft();
+    polygon_.clear(); draftIdleTimer_.start(); emit editingChanged(); update();
+}
 void Canvas::wheelEvent(QWheelEvent *e) { if (!rotatingImage_ && !rotatingOrigin_ && !draggingOrigin_) zoomAt(std::pow(1.0015, e->angleDelta().y()), e->position()); e->accept(); }
 void Canvas::keyPressEvent(QKeyEvent *e) {
+    if (editLocked_ && e->key() != Qt::Key_Space) { e->accept(); return; }
     if ((tool_ == Crop || tool_ == Origin || rotationPreview_) && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) { stopGeometryDrag(); emit geometryApplyRequested(); e->accept(); }
     else if ((rotationPreview_ || tool_ == Origin) && e->key() == Qt::Key_Escape) { stopGeometryDrag(); emit previewCancelRequested(); e->accept(); }
     else if (tool_ == Crop && e->key() == Qt::Key_Escape) { selectingCrop_ = false; setCropSelection({}); e->accept(); }
@@ -567,16 +661,16 @@ void Canvas::keyReleaseEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space && !e->isAutoRepeat()) { space_ = false; if (!panning_) setCursor(tool_ == Hand || tool_ == Rotate ? Qt::OpenHandCursor : Qt::CrossCursor); e->accept(); }
     else QWidget::keyReleaseEvent(e);
 }
-void Canvas::leaveEvent(QEvent *) { inside_ = false; update(); }
+void Canvas::leaveEvent(QEvent *) { inside_ = false; if (drawing_ && tool_ == Polygon) updateShapePreview(); update(); }
 void Canvas::focusOutEvent(QFocusEvent *e) {
-    if (tool_ != Polygon) finishStroke();
+    if (tool_ != Polygon && !editLocked_) finishStroke();
     panning_ = space_ = false; stopGeometryDrag();
     setCursor(tool_ == Hand || tool_ == Rotate ? Qt::OpenHandCursor : Qt::CrossCursor);
     QWidget::focusOutEvent(e);
 }
 void Canvas::dragEnterEvent(QDragEnterEvent *e) {
-    if (e->mimeData()->hasUrls() && e->mimeData()->urls().first().isLocalFile()) e->acceptProposedAction();
+    if (!editLocked_ && e->mimeData()->hasUrls() && e->mimeData()->urls().first().isLocalFile()) e->acceptProposedAction();
 }
 void Canvas::dropEvent(QDropEvent *e) {
-    if (e->mimeData()->hasUrls()) { emit fileDropped(e->mimeData()->urls().first().toLocalFile()); e->acceptProposedAction(); }
+    if (!editLocked_ && e->mimeData()->hasUrls()) { emit fileDropped(e->mimeData()->urls().first().toLocalFile()); e->acceptProposedAction(); }
 }

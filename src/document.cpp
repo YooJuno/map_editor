@@ -1,52 +1,80 @@
 #include "i18n.h"
 #include "document.h"
-#include <QCryptographicHash>
-#include <QFile>
-#include <QFileInfo>
 #include <QTransform>
+#include <QSignalBlocker>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
 
 namespace {
-QByteArray hashFile(const QString &path) {
-    if (path.isEmpty()) return {};
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    if (!hash.addData(&f)) return {};
-    return hash.result();
+template<class Function> auto work(WorkQueue *queue, const QString &label, Function function) -> std::invoke_result_t<Function> {
+    return queue ? queue->run(label, std::move(function)) : function();
 }
-QByteArray pixels(const QImage &image, const QRect &rect) {
+QByteArray rawPixels(const QImage &image, const QRect &rect) {
     QByteArray bytes;
     bytes.reserve(rect.width() * rect.height());
     for (int y = rect.top(); y <= rect.bottom(); ++y)
         bytes.append(reinterpret_cast<const char *>(image.constScanLine(y) + rect.x()), rect.width());
-    return qCompress(bytes, 1);
+    return bytes;
 }
-void patch(QImage &image, const QRect &rect, const QByteArray &compressed) {
-    const auto bytes = qUncompress(compressed);
+QByteArray compress(const QByteArray &bytes) {
+    auto result = qCompress(bytes, 1);
+    if (result.isEmpty()) throw std::runtime_error(I18n::utf8("메모리 할당 실패"));
+    return result;
+}
+QByteArray unpack(const QByteArray &bytes, qsizetype expected) {
+    auto result = qUncompress(bytes);
+    if (result.size() != expected) throw std::runtime_error(I18n::utf8("편집 기록을 복원할 메모리가 부족하거나 기록이 손상되었습니다."));
+    return result;
+}
+void patch(QImage &image, const QRect &rect, const QByteArray &bytes) {
+    auto *target = image.bits(); const auto stride = image.bytesPerLine();
+    if (!target) throw std::runtime_error(I18n::utf8("메모리 할당 실패"));
     for (int y = 0; y < rect.height(); ++y)
-        std::memcpy(image.scanLine(y + rect.y()) + rect.x(), bytes.constData() + y * rect.width(), size_t(rect.width()));
+        std::memcpy(target + qsizetype(y + rect.y()) * stride + rect.x(), bytes.constData() + qsizetype(y) * rect.width(), size_t(rect.width()));
+}
+struct PixelData { QRect area; QByteArray before, after, initial; };
+struct GeometryData {
+    QImage initial;
+    QSize beforeSize, afterSize;
+    QByteArray before, after;
+    MapIO::Metadata oldMeta, newMeta;
+};
+GeometryData geometryData(const MapIO::Map &original, QImage result, const MapIO::Metadata &updated) {
+    const auto error = MapIO::validate(updated, updated.mode == "raw");
+    if (!error.isEmpty()) throw std::runtime_error(error.toUtf8().constData());
+    GeometryData data;
+    data.beforeSize = original.image.size(); data.afterSize = result.size();
+    data.oldMeta = original.meta; data.newMeta = updated;
+    data.before = compress(rawPixels(original.image, original.image.rect()));
+    data.after = compress(rawPixels(result, result.rect())); data.initial = std::move(result);
+    return data;
 }
 }
 class PixelCommand : public QUndoCommand {
 public:
-    PixelCommand(Document *d, QRect rect, const QImage &after, const QString &label)
-        : QUndoCommand(label), doc(d), area(rect), before(pixels(d->image(), rect)), after(pixels(after, rect)) {}
-    void undo() override { patch(doc->map_.image, area, before); emit doc->changed(); }
-    void redo() override { patch(doc->map_.image, area, after); emit doc->changed(); }
-    qsizetype byteSize() const { return before.size() + after.size(); }
+    PixelCommand(Document *d, PixelData data, const QString &label)
+        : QUndoCommand(label), doc(d), data(std::move(data)) {}
+    void undo() override { apply(data.before); }
+    void redo() override {
+        if (!data.initial.isEmpty()) { patch(doc->map_.image, data.area, data.initial); data.initial = {}; }
+        else apply(data.after);
+    }
+    qsizetype byteSize() const { return data.before.size() + data.after.size(); }
 private:
+    void apply(const QByteArray &packed) {
+        const auto expected = qsizetype(data.area.width()) * data.area.height();
+        const auto bytes = work(doc->worker_, I18n::text("편집 기록 복원 중…"), [packed, expected] { return unpack(packed, expected); });
+        patch(doc->map_.image, data.area, bytes);
+    }
     Document *doc;
-    QRect area;
-    QByteArray before, after;
+    PixelData data;
 };
 class MetadataCommand : public QUndoCommand {
 public:
     MetadataCommand(Document *d, const MapIO::Metadata &m) : QUndoCommand(I18n::text("지도 속성 변경")), doc(d), before(d->meta()), after(m) {}
-    void undo() override { doc->map_.meta = before; emit doc->changed(); }
-    void redo() override { doc->map_.meta = after; emit doc->changed(); }
+    void undo() override { doc->map_.meta = before; }
+    void redo() override { doc->map_.meta = after; }
     bool geometry() const { return before.resolution != after.resolution || before.x != after.x || before.y != after.y || before.yaw != after.yaw; }
 private:
     Document *doc;
@@ -54,24 +82,25 @@ private:
 };
 class RotateCommand : public QUndoCommand {
 public:
-    RotateCommand(Document *d, QImage after, MapIO::Metadata meta, const QString &label = I18n::text("이미지 회전")) : QUndoCommand(label), doc(d),
-        beforeSize(d->image().size()), afterSize(after.size()),
-        before(pixels(d->image(), d->image().rect())), after(pixels(after, after.rect())),
-        oldMeta(d->meta()), newMeta(meta) {}
-    void apply(QSize size, const QByteArray &data, const MapIO::Metadata &meta) {
-        doc->map_.image = QImage(size, QImage::Format_Grayscale8);
-        patch(doc->map_.image, doc->map_.image.rect(), data);
-        doc->map_.meta = meta;
-        emit doc->changed();
+    RotateCommand(Document *d, GeometryData data, const QString &label) : QUndoCommand(label), doc(d), data(std::move(data)) {}
+    void undo() override { apply(data.beforeSize, data.before, data.oldMeta); }
+    void redo() override {
+        if (!data.initial.isNull()) { doc->map_.image = std::move(data.initial); data.initial = {}; doc->map_.meta = data.newMeta; }
+        else apply(data.afterSize, data.after, data.newMeta);
     }
-    void undo() override { apply(beforeSize, before, oldMeta); }
-    void redo() override { apply(afterSize, after, newMeta); }
-    qsizetype byteSize() const { return before.size() + after.size(); }
+    qsizetype byteSize() const { return data.before.size() + data.after.size(); }
 private:
+    void apply(QSize size, QByteArray packed, const MapIO::Metadata &meta) {
+        auto image = work(doc->worker_, I18n::text("편집 기록 복원 중…"), [size, packed] {
+            const auto bytes = unpack(packed, qsizetype(size.width()) * size.height());
+            QImage image(size, QImage::Format_Grayscale8);
+            if (image.isNull()) throw std::runtime_error(I18n::utf8("메모리 할당 실패"));
+            patch(image, image.rect(), bytes); return image;
+        });
+        doc->map_.image = std::move(image); doc->map_.meta = meta;
+    }
     Document *doc;
-    QSize beforeSize, afterSize;
-    QByteArray before, after;
-    MapIO::Metadata oldMeta, newMeta;
+    GeometryData data;
 };
 Document::Document(QObject *parent, bool allowRaw) : QObject(parent), undo_(this), allowRaw_(allowRaw) {
     undo_.setUndoLimit(40);
@@ -79,7 +108,7 @@ Document::Document(QObject *parent, bool allowRaw) : QObject(parent), undo_(this
     connect(&undo_, &QUndoStack::indexChanged, this, &Document::changed);
 }
 void Document::open(const QString &path) {
-    auto loadedMap = MapIO::load(path, allowRaw_);
+    auto loadedMap = work(worker_, I18n::text("지도 읽는 중…"), [path, raw = allowRaw_] { return MapIO::load(path, raw); });
     const bool needsSave = !loadedMap.hasYaml;
     replace(std::move(loadedMap), needsSave);
 }
@@ -88,7 +117,7 @@ void Document::replace(MapIO::Map loadedMap, bool needsSave) {
     if (!error.isEmpty()) throw std::runtime_error(error.toUtf8().constData());
     if (loadedMap.image.isNull() || loadedMap.image.format() != QImage::Format_Grayscale8)
         throw std::runtime_error(I18n::utf8("유효한 이미지가 없습니다."));
-    undo_.clear();
+    { const QSignalBlocker block(&undo_); undo_.clear(); }
     map_ = std::move(loadedMap);
     historyBytes_ = 0; historyBaselineDirty_ = false;
     needsPair_ = needsSave;
@@ -100,7 +129,7 @@ void Document::clear() {
     needsPair_ = historyBaselineDirty_ = false;
     historyBytes_ = 0;
     yamlHash_.clear(); imageHash_.clear();
-    undo_.clear(); emit changed();
+    { const QSignalBlocker block(&undo_); undo_.clear(); } emit changed();
 }
 namespace {
 bool geometryCommand(const QUndoCommand *command) {
@@ -124,18 +153,28 @@ void Document::newMap(int w, int h, double resolution) {
     yamlHash_.clear(); imageHash_.clear();
     emit loaded(); emit changed();
 }
-void Document::editImage(const QImage &after, const QString &label) {
+void Document::editImage(const QImage &after, const QString &label, const QRect &changedArea) {
     if (after.size() != image().size() || after.format() != QImage::Format_Grayscale8) return;
-    int left = image().width(), top = image().height(), right = -1, bottom = -1;
-    for (int y = 0; y < image().height(); ++y) {
-        const auto *a = image().constScanLine(y), *b = after.constScanLine(y);
-        if (std::memcmp(a, b, size_t(image().width())) == 0) continue;
-        top = qMin(top, y); bottom = y;
-        for (int x = 0; x < image().width(); ++x) if (a[x] != b[x]) { left = qMin(left, x); right = qMax(right, x); }
-    }
-    if (right >= left) {
-        auto *command = new PixelCommand(this, QRect(QPoint(left, top), QPoint(right, bottom)), after, label);
-        push(command, command->byteSize());
+    const auto search = changedArea.isNull() ? image().rect() : changedArea.intersected(image().rect());
+    if (search.isEmpty()) return;
+    auto data = work(worker_, I18n::text("편집 기록 만드는 중…"), [before = image(), after, search] {
+        int left = before.width(), top = before.height(), right = -1, bottom = -1;
+        for (int y = search.top(); y <= search.bottom(); ++y) {
+            const auto *a = before.constScanLine(y), *b = after.constScanLine(y);
+            if (std::memcmp(a + search.left(), b + search.left(), size_t(search.width())) == 0) continue;
+            top = qMin(top, y); bottom = y;
+            for (int x = search.left(); x <= search.right(); ++x) if (a[x] != b[x]) { left = qMin(left, x); right = qMax(right, x); }
+        }
+        PixelData data;
+        if (right >= left) {
+            data.area = QRect(QPoint(left, top), QPoint(right, bottom));
+            data.before = compress(rawPixels(before, data.area));
+            data.initial = rawPixels(after, data.area); data.after = compress(data.initial);
+        }
+        return data;
+    });
+    if (!data.area.isEmpty()) {
+        auto *command = new PixelCommand(this, std::move(data), label); push(command, command->byteSize());
     }
 }
 void Document::editMetadata(const MapIO::Metadata &meta) {
@@ -147,56 +186,69 @@ void Document::rotateImage(double degrees) {
     if (empty() || !std::isfinite(degrees)) return;
     degrees = std::remainder(degrees, 360.0);
     if (std::abs(degrees) < 1e-10) return;
-    // QImage's bounding transform describes the same expanded pixel rectangle.
-    const auto transform = QImage::trueMatrix(QTransform().rotate(degrees), image().width(), image().height());
-    const QRect bounds = transform.mapRect(QRectF(0, 0, image().width(), image().height())).toAlignedRect();
-    const QSize size = bounds.size();
-    if (qint64(size.width()) * size.height() > MapIO::MaxPixels) throw std::runtime_error(I18n::utf8("회전 후 지도 크기가 32 Mi 픽셀을 초과합니다."));
-    QImage result(size, QImage::Format_Grayscale8);
-    if (result.isNull()) throw std::runtime_error(I18n::utf8("회전 이미지 메모리 할당 실패"));
-    result.fill(MapIO::unknownGray(meta()));
-    const auto inverse = transform.inverted();
-    for (int y = 0; y < result.height(); ++y) for (int x = 0; x < result.width(); ++x) {
-        const auto src = inverse.map(QPointF(x + 0.5, y + 0.5));
-        const int sx = int(std::floor(src.x())), sy = int(std::floor(src.y()));
-        if (image().rect().contains(sx, sy)) result.scanLine(y)[x] = image().constScanLine(sy)[sx];
-    }
-    auto updated = meta();
-    const auto oldBottomLeft = inverse.map(QPointF(0, result.height()));
-    const auto origin = MapIO::pixelToWorld(oldBottomLeft, image().height(), meta());
-    updated.x = origin.x(); updated.y = origin.y();
-    updated.yaw += degrees * std::acos(-1.0) / 180;
-    auto *command = new RotateCommand(this, result, updated);
-    push(command, command->byteSize());
+    auto data = work(worker_, I18n::text("지도 회전 중…"), [original = map_, degrees] {
+        const auto &image = original.image;
+        const auto transform = QImage::trueMatrix(QTransform().rotate(degrees), image.width(), image.height());
+        const auto size = transform.mapRect(QRectF(0, 0, image.width(), image.height())).toAlignedRect().size();
+        if (qint64(size.width()) * size.height() > MapIO::MaxPixels) throw std::runtime_error(I18n::utf8("회전 후 지도 크기가 32 Mi 픽셀을 초과합니다."));
+        QImage result(size, QImage::Format_Grayscale8);
+        if (result.isNull()) throw std::runtime_error(I18n::utf8("회전 이미지 메모리 할당 실패"));
+        result.fill(MapIO::unknownGray(original.meta));
+        const auto inverse = transform.inverted(); const auto *source = image.constBits(); const auto stride = image.bytesPerLine();
+        for (int y = 0; y < result.height(); ++y) {
+            auto *row = result.scanLine(y);
+            for (int x = 0; x < result.width(); ++x) {
+                const auto src = inverse.map(QPointF(x + .5, y + .5));
+                const int sx = int(std::floor(src.x())), sy = int(std::floor(src.y()));
+                if (uint(sx) < uint(image.width()) && uint(sy) < uint(image.height())) row[x] = source[qsizetype(sy) * stride + sx];
+            }
+        }
+        auto updated = original.meta;
+        const auto origin = MapIO::pixelToWorld(inverse.map(QPointF(0, result.height())), image.height(), original.meta);
+        updated.x = origin.x(); updated.y = origin.y(); updated.yaw += degrees * std::acos(-1.) / 180.;
+        return geometryData(original, std::move(result), updated);
+    });
+    auto *command = new RotateCommand(this, std::move(data), I18n::text("이미지 회전")); push(command, command->byteSize());
 }
 void Document::cropImage(const QRect &requested) {
     if (empty()) return;
     const auto area = requested.intersected(image().rect());
     if (area.isEmpty()) throw std::runtime_error(I18n::utf8("남길 영역을 먼저 선택하세요."));
     if (area == image().rect()) return;
-    auto result = image().copy(area);
-    if (result.isNull()) throw std::runtime_error(I18n::utf8("자르기 이미지 메모리 할당 실패"));
-    auto updated = meta();
-    const auto origin = MapIO::pixelToWorld(QPointF(area.x(), area.y() + area.height()), image().height(), meta());
-    updated.x = origin.x(); updated.y = origin.y();
-    auto *command = new RotateCommand(this, result, updated, I18n::text("지도 자르기"));
-    push(command, command->byteSize());
+    auto data = work(worker_, I18n::text("지도 자르는 중…"), [original = map_, area] {
+        auto result = original.image.copy(area);
+        if (result.isNull()) throw std::runtime_error(I18n::utf8("자르기 이미지 메모리 할당 실패"));
+        auto updated = original.meta;
+        const auto origin = MapIO::pixelToWorld(QPointF(area.x(), area.y() + area.height()), original.image.height(), original.meta);
+        updated.x = origin.x(); updated.y = origin.y();
+        return geometryData(original, std::move(result), updated);
+    });
+    auto *command = new RotateCommand(this, std::move(data), I18n::text("지도 자르기")); push(command, command->byteSize());
 }
 QRect Document::knownBounds() const {
-    int left = image().width(), top = image().height(), right = -1, bottom = -1;
-    for (int y = 0; y < image().height(); ++y) {
-        const auto *row = image().constScanLine(y);
-        for (int x = 0; x < image().width(); ++x) {
-            const auto value = MapIO::probability(row[x], meta());
-            if (value < meta().free || value > meta().occupied) {
+    return work(worker_, I18n::text("지도 여백 찾는 중…"), [image = image(), meta = meta()] {
+        bool known[256];
+        for (int value = 0; value < 256; ++value) { const auto p = MapIO::probability(value, meta); known[value] = p < meta.free || p > meta.occupied; }
+        int left = image.width(), top = image.height(), right = -1, bottom = -1;
+        for (int y = 0; y < image.height(); ++y) {
+            const auto *row = image.constScanLine(y);
+            for (int x = 0; x < image.width(); ++x) if (known[row[x]]) {
                 left = qMin(left, x); right = qMax(right, x); top = qMin(top, y); bottom = y;
             }
         }
-    }
-    return right < left ? QRect() : QRect(QPoint(left, top), QPoint(right, bottom));
+        return right < left ? QRect() : QRect(QPoint(left, top), QPoint(right, bottom));
+    });
 }
 void Document::push(QUndoCommand *command, qsizetype bytes) {
-    // Account conservatively, including discarded redo branches, to stay bounded.
+    // Redo branches and commands evicted by the count limit no longer own memory.
+    historyBytes_ = 0;
+    const int first = undo_.undoLimit() > 0 ? qMax(0, undo_.index() + 1 - undo_.undoLimit()) : 0;
+    for (int i = first; i < undo_.index(); ++i) {
+        const auto *entry = undo_.command(i);
+        if (auto *pixel = dynamic_cast<const PixelCommand *>(entry)) historyBytes_ += pixel->byteSize();
+        else if (auto *geometry = dynamic_cast<const RotateCommand *>(entry)) historyBytes_ += geometry->byteSize();
+        else historyBytes_ += 512;
+    }
     if (historyBytes_ + bytes > 96 * 1024 * 1024) {
         historyBaselineDirty_ = dirty();
         undo_.clear(); historyBytes_ = 0;
@@ -204,19 +256,24 @@ void Document::push(QUndoCommand *command, qsizetype bytes) {
     historyBytes_ += bytes; undo_.push(command);
 }
 void Document::refreshDiskHashes() {
-    yamlHash_ = hashFile(map_.yamlPath); imageHash_ = hashFile(map_.imagePath);
-}
-bool Document::diskMatches() const {
-    return yamlHash_ == hashFile(map_.yamlPath) && imageHash_ == hashFile(map_.imagePath);
+    if (!map_.disk.captured) {
+        if (map_.yamlPath.isEmpty() && map_.imagePath.isEmpty()) map_.disk = {{}, {}, true};
+        else map_.disk = work(worker_, I18n::text("지도 파일 확인 중…"), [yaml = map_.yamlPath, image = map_.imagePath] { return MapIO::fingerprint(yaml, image); });
+    }
+    yamlHash_ = map_.disk.yaml; imageHash_ = map_.disk.image;
 }
 MapIO::SaveResult Document::save(const QString &newPath) {
     if (empty()) throw std::runtime_error(I18n::utf8("열린 지도가 없습니다."));
     const auto path = newPath.isEmpty() ? map_.yamlPath : newPath;
     const bool same = !map_.yamlPath.isEmpty() && MapIO::sameFilePath(path, map_.yamlPath);
-    if (same && !diskMatches()) throw std::runtime_error(I18n::utf8("열어 둔 지도 파일이 외부에서 변경되었거나 삭제되었습니다. 다시 열거나 다른 이름으로 저장하세요."));
-    if (same && !dirty()) return {map_.yamlPath, map_.imagePath, {}};
-    auto saved = MapIO::savePair(map_, path, same ? map_.imagePath : QString(), allowRaw_);
-    map_.yamlPath = saved.yamlPath; map_.imagePath = saved.imagePath; map_.hasYaml = true;
+    const MapIO::DiskSnapshot expected{yamlHash_, imageHash_, same};
+    if (same && !dirty()) {
+        const auto unchanged = work(worker_, I18n::text("지도 파일 확인 중…"), [map = map_, expected] { return MapIO::fingerprint(map.yamlPath, map.imagePath) == expected; });
+        if (!unchanged) throw std::runtime_error(I18n::utf8("열어 둔 지도 파일이 외부에서 변경되었거나 삭제되었습니다. 다시 열거나 다른 이름으로 저장하세요."));
+        return {map_.yamlPath, map_.imagePath, {}, expected};
+    }
+    auto saved = work(worker_, I18n::text("지도 저장 중…"), [map = map_, path, same, raw = allowRaw_, expected] { return MapIO::savePair(map, path, same ? map.imagePath : QString(), raw, expected); });
+    map_.yamlPath = saved.yamlPath; map_.imagePath = saved.imagePath; map_.hasYaml = true; map_.disk = saved.disk;
     needsPair_ = false; historyBaselineDirty_ = false;
     refreshDiskHashes(); undo_.setClean(); emit changed();
     return saved;
