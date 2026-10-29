@@ -36,10 +36,10 @@ QPushButton:disabled, QToolButton:disabled { color: #7e848f; background: #2d3036
 QToolBar QToolButton, QStatusBar QToolButton { background: transparent; border: 1px solid transparent; padding: 6px 9px; }
 QToolBar QToolButton:hover, QStatusBar QToolButton:hover { background: #353d48; border-color: #3d4149; }
 QToolBar QToolButton:disabled, QStatusBar QToolButton:disabled { background: transparent; border-color: transparent; }
-QToolButton#primarySave { background: #394655; border: 1px solid #596b82; color: #e0e3e8; padding: 6px 26px 6px 12px; font-weight: 600; }
+QToolButton#primarySave { background: #394655; border: 1px solid #596b82; color: #e0e3e8; padding: 6px 9px; font-weight: 600; }
 QToolButton#primarySave:hover { background: #485c76; border-color: #596b82; }
 QToolButton#primarySave:disabled { background: #2d3036; border-color: #3d4149; color: #7e848f; }
-QToolButton#primarySave::menu-button { border: 0; border-left: 1px solid #596b82; width: 20px; }
+QToolButton#saveOptions::menu-indicator { image: none; }
 QPushButton[primary="true"] { background: #485c76; border-color: #485c76; color: #f1f4f8; font-weight: 600; }
 QPushButton[primary="true"]:hover { background: #566d8b; border-color: #566d8b; }
 QPushButton[primary="true"]:disabled { background: #2d3036; border-color: #3d4149; color: #7e848f; }

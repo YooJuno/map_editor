@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "theme.h"
+#include "i18n.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFile>
@@ -19,6 +20,7 @@ int main(int argc, char **argv) {
         if (families.contains(family)) { app.setFont(QFont(family, 10)); break; }
     }
     Theme::apply(QSettings().value("colorTheme", "dark").toString() != "light");
+    I18n::setLanguage(QSettings().value("language", "ko").toString());
     QCommandLineParser parser; parser.setApplicationDescription("PGM + YAML occupancy map editor"); parser.addHelpOption(); parser.addVersionOption(); parser.addPositionalArgument("map", "PGM or YAML map file", "[map]");
     parser.addOption({"screenshot", "Save a UI screenshot and exit (for local QA).", "path"});
     parser.addOption({"keepout", "Open a keepout mask over the reference map.", "yaml"});

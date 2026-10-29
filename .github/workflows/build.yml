@@ -24,8 +24,8 @@ jobs:
       - name: Read version and validate release tag
         id: version
         run: python3 scripts/release_version.py
-      - name: Test package format and release version checks
-        run: python3 -m unittest discover -s tests -p test_packaging.py -v
+      - name: Test package format, release version and translations
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
 
   desktop:
     needs: version

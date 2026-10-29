@@ -142,10 +142,12 @@ private slots:
         auto *base = window.activeDocument(); const auto original = base->image().copy(); auto *canvas = window.canvas(); canvas->fit();
         auto *layer = window.findChild<QComboBox *>("activeLayer"); layer->setCurrentIndex(1);
         QVERIFY(window.findChild<QPushButton *>("polygonTool")->isChecked());
-        QVERIFY(!window.findChild<QDoubleSpinBox *>("originX")->isEnabled());
+        QVERIFY(window.findChild<QDoubleSpinBox *>("originX")->isEnabled());
         auto *keepout = window.activeDocument();
+        QVERIFY(keepout->empty());
         window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(canvas, {4.5, 3.5}, {12.5, 10.5});
         QCOMPARE(int(keepout->image().constScanLine(5)[6]), 100); QCOMPARE(base->image(), original);
+        QVERIFY(!window.findChild<QDoubleSpinBox *>("originX")->isEnabled());
         layer->setCurrentIndex(2); auto *speed = window.activeDocument(); window.findChild<QSpinBox *>("speedPercent")->setValue(40);
         window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(canvas, {16.5, 4.5}, {26.5, 14.5});
         QCOMPARE(int(speed->image().constScanLine(8)[20]), 40); QCOMPARE(base->image(), original);
@@ -165,10 +167,13 @@ private slots:
         MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
         auto *x = window.findChild<QDoubleSpinBox *>("originX"); x->setValue(-1.5);
         window.findChild<QPushButton *>("applyMetadata")->click(); window.activeDocument()->save();
-        auto *layer = window.findChild<QComboBox *>("activeLayer"); layer->setCurrentIndex(1); layer->setCurrentIndex(0);
+        auto *layer = window.findChild<QComboBox *>("activeLayer"); layer->setCurrentIndex(1);
+        auto *mask = window.activeDocument(); window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(window.canvas(), {3.5, 3.5}, {8.5, 8.5});
+        layer->setCurrentIndex(0);
         QVERIFY(!window.findChild<QAction *>("undoAction")->isEnabled());
-        window.findChild<QPushButton *>("closeMasks")->click(); QVERIFY(window.findChild<QAction *>("undoAction")->isEnabled());
-        window.close();
+        mask->save(dir.filePath("mask.yaml")); QVERIFY(window.findChild<QAction *>("undoAction")->isEnabled());
+        window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(mask->empty());
+        window.activeDocument()->save(); window.close();
     }
     void closeWarnsForInactiveDirtyMask() {
         QTemporaryDir dir; const auto paths = MapIO::savePair(reference(), dir.filePath("base.yaml"));
@@ -230,9 +235,9 @@ private slots:
         QCOMPARE(window.findChild<QSpinBox *>("cropWidth")->value(), 22);
         QTest::keyClick(canvas, Qt::Key_Return); QCOMPARE(doc->image().size(), QSize(22, 17));
         doc->save(); window.findChild<QPushButton *>("keepoutWorkspace")->click();
-        auto *mask = window.activeDocument(); QVERIFY(mask != doc); QCOMPARE(mask->image().size(), doc->image().size());
-        QVERIFY(window.findChild<QPushButton *>("cropWorkspace")->property("locked").toBool());
-        QVERIFY(window.findChild<QPushButton *>("rotateWorkspace")->property("locked").toBool());
+        auto *mask = window.activeDocument(); QVERIFY(mask != doc); QVERIFY(mask->empty());
+        QVERIFY(!window.findChild<QPushButton *>("cropWorkspace")->property("locked").toBool());
+        QVERIFY(!window.findChild<QPushButton *>("rotateWorkspace")->property("locked").toBool());
         window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(canvas, {2.5, 2.5}, {10.5, 8.5});
         QCOMPARE(int(mask->image().constScanLine(4)[5]), 100);
         window.findChild<QPushButton *>("clearZone")->click(); rectangle(canvas, {2.5, 2.5}, {10.5, 8.5});
@@ -314,11 +319,34 @@ private slots:
                 for (auto *button : box->buttons()) if (button->text().contains("계속")) { button->click(); break; }
         });
         window.findChild<QPushButton *>("cropWorkspace")->click();
-        QVERIFY(mask->empty()); QCOMPARE(window.activeDocument(), base); QCOMPARE(base->image(), original);
+        QVERIFY(!mask->empty()); QVERIFY(!mask->dirty()); QCOMPARE(window.activeDocument(), base); QCOMPARE(base->image(), original);
         QVERIFY(window.findChild<QSpinBox *>("cropWidth")->isVisible());
         const auto saved = Mask::load(maskPath, base->map(), Mask::Keepout);
         QCOMPARE(int(saved.image.constScanLine(6)[17]), 100);
+        window.canvas()->setCropSelection(QRect(2, 2, 24, 18)); window.findChild<QPushButton *>("applyGeometry")->click();
+        QVERIFY(mask->empty()); base->save();
         window.close();
+    }
+    void maskTabsAreLazyAndSavingFollowsChanges() {
+        QTemporaryDir dir; const auto paths = MapIO::savePair(reference(), dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        auto *base = window.activeDocument(); auto *save = window.findChild<QAction *>("saveAction");
+        QVERIFY(!save->isEnabled()); QVERIFY(window.findChild<QAction *>("saveAllAction")->isEnabled() == false);
+        for (const auto name : {"keepoutWorkspace", "speedWorkspace", "mapWorkspace", "speedWorkspace"}) {
+            window.findChild<QPushButton *>(name)->click();
+            if (window.activeDocument() != base) QVERIFY(window.activeDocument()->empty());
+            QVERIFY(!save->isEnabled()); QVERIFY(!window.findChild<QPushButton *>("closeMasks")->isVisible());
+            QVERIFY(!window.findChild<QPushButton *>("rotateWorkspace")->property("locked").toBool());
+        }
+        auto *mask = window.activeDocument(); window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(window.canvas(), {3.5, 3.5}, {10.5, 10.5});
+        QVERIFY(mask->dirty()); QVERIFY(save->isEnabled()); QVERIFY(window.findChild<QPushButton *>("saveMask")->isEnabled());
+        QVERIFY(window.findChild<QPushButton *>("rotateWorkspace")->property("locked").toBool());
+        mask->save(dir.filePath("speed.yaml")); QVERIFY(!save->isEnabled());
+        QVERIFY(!window.findChild<QPushButton *>("rotateWorkspace")->property("locked").toBool());
+        window.findChild<QPushButton *>("rotateWorkspace")->click(); QVERIFY(!mask->empty());
+        window.findChild<QDoubleSpinBox *>("rotationAngle")->setValue(90); window.findChild<QPushButton *>("applyGeometry")->click();
+        QVERIFY(mask->empty()); QCOMPARE(base->image().size(), QSize(24, 32));
+        QVERIFY(QFile::exists(dir.filePath("speed.yaml"))); base->save(); window.close();
     }
 };
 QTEST_MAIN(MaskTest)

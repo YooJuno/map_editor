@@ -1,4 +1,5 @@
 <RCC><qresource prefix="/">
+  <file>i18n.json</file>
   <file>style.qss</file><file>mapwright.png</file><file>check.png</file>
   <file>style-light.qss</file>
   <file>arrow-up.png</file><file>arrow-down.png</file>

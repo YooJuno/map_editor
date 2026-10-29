@@ -1,0 +1,1404 @@
+{
+  "파일": {
+    "en": "File",
+    "ja": "ファイル",
+    "zh": "文件"
+  },
+  "테마": {
+    "en": "Theme",
+    "ja": "テーマ",
+    "zh": "主题"
+  },
+  "다크 모드": {
+    "en": "Dark mode",
+    "ja": "ダークモード",
+    "zh": "深色模式"
+  },
+  "라이트 모드": {
+    "en": "Light mode",
+    "ja": "ライトモード",
+    "zh": "浅色模式"
+  },
+  "테마 선택": {
+    "en": "Choose theme",
+    "ja": "テーマを選択",
+    "zh": "选择主题"
+  },
+  "다크 / 라이트 테마 선택": {
+    "en": "Choose dark or light theme",
+    "ja": "ダーク・ライトテーマを選択",
+    "zh": "选择深色或浅色主题"
+  },
+  "언어": {
+    "en": "Language",
+    "ja": "言語",
+    "zh": "语言"
+  },
+  "언어 선택": {
+    "en": "Choose language",
+    "ja": "言語を選択",
+    "zh": "选择语言"
+  },
+  "저장 옵션": {
+    "en": "Save options",
+    "ja": "保存オプション",
+    "zh": "保存选项"
+  },
+  "그리기": {
+    "en": "Drawing",
+    "ja": "描画",
+    "zh": "绘图"
+  },
+  "작업": {
+    "en": "Workspace",
+    "ja": "作業",
+    "zh": "工作区"
+  },
+  "도구": {
+    "en": "Tools",
+    "ja": "ツール",
+    "zh": "工具"
+  },
+  "속성 패널": {
+    "en": "Properties panel",
+    "ja": "プロパティパネル",
+    "zh": "属性面板"
+  },
+  "문서": {
+    "en": "Document",
+    "ja": "ドキュメント",
+    "zh": "文档"
+  },
+  "속성 패널 접기 · 보기 메뉴에서 다시 열기": {
+    "en": "Hide properties · reopen from View",
+    "ja": "プロパティを隠す · 表示メニューで再表示",
+    "zh": "隐藏属性 · 可从“视图”菜单重新打开"
+  },
+  "YAML / PGM 지도 편집": {
+    "en": "YAML / PGM map editor",
+    "ja": "YAML / PGM マップ編集",
+    "zh": "YAML / PGM 地图编辑"
+  },
+  "미확인": {
+    "en": "Unknown",
+    "ja": "不明",
+    "zh": "未知"
+  },
+  "제한 없음": {
+    "en": "Unrestricted",
+    "ja": "制限なし",
+    "zh": "无限制"
+  },
+  "진입 금지": {
+    "en": "Keepout",
+    "ja": "進入禁止",
+    "zh": "禁行"
+  },
+  "최대 속도의 %1%": {
+    "en": "%1% of maximum speed",
+    "ja": "最高速度の %1%",
+    "zh": "最高速度的 %1%"
+  },
+  "픽셀 %1, %2    좌표 %3, %4 m    %5": {
+    "en": "Pixel %1, %2    World %3, %4 m    %5",
+    "ja": "ピクセル %1, %2    座標 %3, %4 m    %5",
+    "zh": "像素 %1, %2    坐标 %3, %4 m    %5"
+  },
+  "장애물": {
+    "en": "Occupied",
+    "ja": "障害物",
+    "zh": "障碍物"
+  },
+  "빈 공간": {
+    "en": "Free",
+    "ja": "空き領域",
+    "zh": "空闲区域"
+  },
+  "픽셀 %1, %2    좌표 %3, %4 m    값 %5 (%6)": {
+    "en": "Pixel %1, %2    World %3, %4 m    Value %5 (%6)",
+    "ja": "ピクセル %1, %2    座標 %3, %4 m    値 %5 (%6)",
+    "zh": "像素 %1, %2    坐标 %3, %4 m    数值 %5 (%6)"
+  },
+  "다크": {
+    "en": "Dark",
+    "ja": "ダーク",
+    "zh": "深色"
+  },
+  "라이트": {
+    "en": "Light",
+    "ja": "ライト",
+    "zh": "浅色"
+  },
+  "다크 모드 · 테마 선택": {
+    "en": "Dark mode · choose theme",
+    "ja": "ダークモード · テーマを選択",
+    "zh": "深色模式 · 选择主题"
+  },
+  "라이트 모드 · 테마 선택": {
+    "en": "Light mode · choose theme",
+    "ja": "ライトモード · テーマを選択",
+    "zh": "浅色模式 · 选择主题"
+  },
+  "펜": {
+    "en": "Pen",
+    "ja": "ペン",
+    "zh": "画笔"
+  },
+  "직선": {
+    "en": "Line",
+    "ja": "直線",
+    "zh": "直线"
+  },
+  "사각형": {
+    "en": "Rectangle",
+    "ja": "四角形",
+    "zh": "矩形"
+  },
+  "채우기": {
+    "en": "Fill",
+    "ja": "塗りつぶし",
+    "zh": "填充"
+  },
+  "이동": {
+    "en": "Pan",
+    "ja": "移動",
+    "zh": "平移"
+  },
+  "스포이드": {
+    "en": "Eyedropper",
+    "ja": "スポイト",
+    "zh": "取色器"
+  },
+  "다각형": {
+    "en": "Polygon",
+    "ja": "多角形",
+    "zh": "多边形"
+  },
+  "스포이드 · 실제 픽셀값 가져오기 (I)": {
+    "en": "Eyedropper · sample actual pixel value (I)",
+    "ja": "スポイト · 実際のピクセル値を取得 (I)",
+    "zh": "取色器 · 获取实际像素值 (I)"
+  },
+  "지도": {
+    "en": "Map",
+    "ja": "マップ",
+    "zh": "地图"
+  },
+  "속도 제한": {
+    "en": "Speed limit",
+    "ja": "速度制限",
+    "zh": "限速"
+  },
+  "회전": {
+    "en": "Rotate",
+    "ja": "回転",
+    "zh": "旋转"
+  },
+  "자르기": {
+    "en": "Crop",
+    "ja": "切り抜き",
+    "zh": "裁剪"
+  },
+  "원점": {
+    "en": "Origin",
+    "ja": "原点",
+    "zh": "原点"
+  },
+  "진입 금지 마스크 만들기 / 편집": {
+    "en": "Create or edit keepout mask",
+    "ja": "進入禁止マスクを作成・編集",
+    "zh": "创建或编辑禁行掩码"
+  },
+  "속도 제한 마스크 만들기 / 편집": {
+    "en": "Create or edit speed limit mask",
+    "ja": "速度制限マスクを作成・編集",
+    "zh": "创建或编辑限速掩码"
+  },
+  "이미지 회전": {
+    "en": "Rotate image",
+    "ja": "画像の回転",
+    "zh": "旋转图像"
+  },
+  "슬라이더나 숫자로 조정한 뒤 적용하세요.\n원점과 Yaw도 함께 보정합니다.": {
+    "en": "Adjust the slider or enter an angle, then apply.\nOrigin and yaw are adjusted together.",
+    "ja": "スライダーや数値で調整して適用します。\n原点と Yaw も補正します。",
+    "zh": "拖动滑块或输入角度后应用。\n原点和 Yaw 会同步调整。"
+  },
+  "지도 자르기": {
+    "en": "Crop map",
+    "ja": "マップの切り抜き",
+    "zh": "裁剪地图"
+  },
+  "지도에서 남길 영역을 드래그하세요.\n자른 위치에 맞춰 원점을 보정합니다.": {
+    "en": "Drag the area to keep on the map.\nThe origin is adjusted to match the crop.",
+    "ja": "残す範囲をマップ上でドラッグします。\n切り抜き位置に合わせて原点を補正します。",
+    "zh": "在地图上拖出要保留的区域。\n原点会根据裁剪位置调整。"
+  },
+  "왼쪽 X": {
+    "en": "Left X",
+    "ja": "左端 X",
+    "zh": "左侧 X"
+  },
+  "위쪽 Y": {
+    "en": "Top Y",
+    "ja": "上端 Y",
+    "zh": "顶部 Y"
+  },
+  "가로": {
+    "en": "Width",
+    "ja": "幅",
+    "zh": "宽度"
+  },
+  "세로": {
+    "en": "Height",
+    "ja": "高さ",
+    "zh": "高度"
+  },
+  "미확인 여백 자동 선택": {
+    "en": "Select without unknown margins",
+    "ja": "不明な余白を除いて選択",
+    "zh": "自动排除未知边缘"
+  },
+  "모두 미확인 영역입니다. 남길 영역을 직접 선택하세요.": {
+    "en": "All cells are unknown. Select the area to keep manually.",
+    "ja": "全セルが不明です。残す範囲を手動で選択してください。",
+    "zh": "所有单元格均为未知。请手动选择要保留的区域。"
+  },
+  "미확인 여백을 제외한 영역을 선택했습니다. 적용 전 조정할 수 있습니다.": {
+    "en": "Selected the area without unknown margins. Adjust it before applying.",
+    "ja": "不明な余白を除いて選択しました。適用前に調整できます。",
+    "zh": "已选择排除未知边缘后的区域。应用前可继续调整。"
+  },
+  "적용": {
+    "en": "Apply",
+    "ja": "適用",
+    "zh": "应用"
+  },
+  "초기화": {
+    "en": "Reset",
+    "ja": "リセット",
+    "zh": "重置"
+  },
+  "흰색": {
+    "en": "White",
+    "ja": "白",
+    "zh": "白色"
+  },
+  "검정": {
+    "en": "Black",
+    "ja": "黒",
+    "zh": "黑色"
+  },
+  "회색": {
+    "en": "Gray",
+    "ja": "グレー",
+    "zh": "灰色"
+  },
+  "회색 복원": {
+    "en": "Reset gray",
+    "ja": "グレーを戻す",
+    "zh": "重置灰色"
+  },
+  "회색을 YAML 임계값 기준으로 되돌리기": {
+    "en": "Reset gray using the YAML thresholds",
+    "ja": "YAML のしきい値に基づくグレーに戻す",
+    "zh": "根据 YAML 阈值重置灰色"
+  },
+  "브러시 굵기": {
+    "en": "Brush width",
+    "ja": "ブラシの太さ",
+    "zh": "笔刷宽度"
+  },
+  "브러시 굵기 (px) · [ / ]": {
+    "en": "Brush width (px) · [ / ]",
+    "ja": "ブラシの太さ (px) · [ / ]",
+    "zh": "笔刷宽度 (px) · [ / ]"
+  },
+  "내부 채움": {
+    "en": "Filled",
+    "ja": "内部を塗る",
+    "zh": "填充内部"
+  },
+  "사각형 내부를 선택한 색으로 채우기": {
+    "en": "Fill the rectangle with the selected color",
+    "ja": "選択色で四角形の内部を塗りつぶす",
+    "zh": "用所选颜色填充矩形内部"
+  },
+  "구역 그리기": {
+    "en": "Paint zone",
+    "ja": "区域を描く",
+    "zh": "绘制区域"
+  },
+  "제한 해제": {
+    "en": "Clear restriction",
+    "ja": "制限を解除",
+    "zh": "解除限制"
+  },
+  "필터 표시": {
+    "en": "Filter display",
+    "ja": "フィルター表示",
+    "zh": "滤波器掩码显示"
+  },
+  "원본 지도": {
+    "en": "Reference map",
+    "ja": "元のマップ",
+    "zh": "原始地图"
+  },
+  "진입 금지 마스크": {
+    "en": "Keepout mask",
+    "ja": "進入禁止マスク",
+    "zh": "禁行掩码"
+  },
+  "속도 제한 마스크": {
+    "en": "Speed limit mask",
+    "ja": "速度制限マスク",
+    "zh": "限速掩码"
+  },
+  "편집할 지도 또는 필터 마스크를 선택합니다.": {
+    "en": "Select the map or filter mask to edit.",
+    "ja": "編集するマップまたはフィルターマスクを選択します。",
+    "zh": "选择要编辑的地图或滤波器掩码。"
+  },
+  "빨강 마스크 표시": {
+    "en": "Show red mask",
+    "ja": "赤いマスクを表示",
+    "zh": "显示红色掩码"
+  },
+  "파랑 마스크 표시": {
+    "en": "Show blue mask",
+    "ja": "青いマスクを表示",
+    "zh": "显示蓝色掩码"
+  },
+  "불투명도": {
+    "en": "Opacity",
+    "ja": "不透明度",
+    "zh": "不透明度"
+  },
+  "월드 좌표 (0, 0)을 놓을 위치를 지도에서 클릭하거나 드래그한 뒤 적용하세요.": {
+    "en": "Click or drag where world (0, 0) should be, then apply.",
+    "ja": "ワールド座標 (0, 0) を置く位置をクリックまたはドラッグし、適用します。",
+    "zh": "点击或拖动以设置世界坐标 (0, 0) 的位置，然后应用。"
+  },
+  "지도 좌표": {
+    "en": "Map coordinates",
+    "ja": "マップ座標",
+    "zh": "地图坐标"
+  },
+  "해상도": {
+    "en": "Resolution",
+    "ja": "解像度",
+    "zh": "分辨率"
+  },
+  "원점 · Origin": {
+    "en": "Origin · world coordinates",
+    "ja": "原点 · ワールド座標",
+    "zh": "原点 · 世界坐标"
+  },
+  "지도의 왼쪽 아래 모서리에 해당하는 월드 좌표": {
+    "en": "World coordinates of the map's bottom-left corner",
+    "ja": "マップの左下隅のワールド座標",
+    "zh": "地图左下角的世界坐标"
+  },
+  "YAML의 origin[2]. 도 단위로 입력하고 라디안으로 저장합니다.": {
+    "en": "YAML origin[2]. Enter degrees; saved in radians.",
+    "ja": "YAML の origin[2]。度で入力し、ラジアンで保存します。",
+    "zh": "YAML 的 origin[2]。输入单位为度，保存单位为弧度。"
+  },
+  "마스크 수정 사항을 저장하면 원점과 해상도를 변경할 수 있습니다.": {
+    "en": "Save mask changes to edit the origin and resolution.",
+    "ja": "マスクの変更を保存すると原点と解像度を編集できます。",
+    "zh": "保存掩码修改后即可编辑原点和分辨率。"
+  },
+  "점유 설정": {
+    "en": "Occupancy settings",
+    "ja": "占有設定",
+    "zh": "占用设置"
+  },
+  "0 — 검정이 장애물": {
+    "en": "0 — black is occupied",
+    "ja": "0 — 黒が障害物",
+    "zh": "0 — 黑色为障碍物"
+  },
+  "1 — 흰색이 장애물": {
+    "en": "1 — white is occupied",
+    "ja": "1 — 白が障害物",
+    "zh": "1 — 白色为障碍物"
+  },
+  "되돌리기": {
+    "en": "Revert",
+    "ja": "変更を戻す",
+    "zh": "还原"
+  },
+  "구역 편집": {
+    "en": "Zone editing",
+    "ja": "区域の編集",
+    "zh": "区域编辑"
+  },
+  "새 구역 속도 (최대 속도 대비)": {
+    "en": "New zone speed (% of maximum)",
+    "ja": "新しい区域の速度 (最高速度比)",
+    "zh": "新区域速度（相对最高速度）"
+  },
+  "마스크 열기…": {
+    "en": "Open mask…",
+    "ja": "マスクを開く…",
+    "zh": "打开掩码…"
+  },
+  "마스크 저장": {
+    "en": "Save mask",
+    "ja": "マスクを保存",
+    "zh": "保存掩码"
+  },
+  "모든 구역 지우기": {
+    "en": "Clear all zones",
+    "ja": "全区域を消去",
+    "zh": "清除所有区域"
+  },
+  "점을 찍고 Enter로 다각형 완성\nEsc 취소 · 제한 해제로 구역 삭제": {
+    "en": "Click points, then Enter to finish the polygon\nEsc to cancel · Clear restriction to remove zones",
+    "ja": "点を置き、Enter で多角形を確定\nEsc で取消 · 制限を解除で区域を削除",
+    "zh": "点击添加顶点，按 Enter 完成多边形\nEsc 取消 · 用“解除限制”删除区域"
+  },
+  "마스크 모두 닫기": {
+    "en": "Close all masks",
+    "ja": "全マスクを閉じる",
+    "zh": "关闭所有掩码"
+  },
+  "좌표축 표시": {
+    "en": "Show axes",
+    "ja": "座標軸を表示",
+    "zh": "显示坐标轴"
+  },
+  "파일(&F)": {
+    "en": "&File",
+    "ja": "ファイル(&F)",
+    "zh": "文件(&F)"
+  },
+  "지도 열기": {
+    "en": "Open map",
+    "ja": "マップを開く",
+    "zh": "打开地图"
+  },
+  "저장": {
+    "en": "Save",
+    "ja": "保存",
+    "zh": "保存"
+  },
+  "다른 이름으로 저장": {
+    "en": "Save as",
+    "ja": "名前を付けて保存",
+    "zh": "另存为"
+  },
+  "모두 저장": {
+    "en": "Save all",
+    "ja": "すべて保存",
+    "zh": "全部保存"
+  },
+  "종료": {
+    "en": "Quit",
+    "ja": "終了",
+    "zh": "退出"
+  },
+  "편집(&E)": {
+    "en": "&Edit",
+    "ja": "編集(&E)",
+    "zh": "编辑(&E)"
+  },
+  "실행 취소": {
+    "en": "Undo",
+    "ja": "元に戻す",
+    "zh": "撤销"
+  },
+  "다시 실행": {
+    "en": "Redo",
+    "ja": "やり直す",
+    "zh": "重做"
+  },
+  "지도(&M)": {
+    "en": "&Map",
+    "ja": "マップ(&M)",
+    "zh": "地图(&M)"
+  },
+  "이미지 회전…": {
+    "en": "Rotate image…",
+    "ja": "画像を回転…",
+    "zh": "旋转图像…"
+  },
+  "3색으로 변환": {
+    "en": "Convert to 3 colors",
+    "ja": "3色に変換",
+    "zh": "转换为三色"
+  },
+  "3색 변환": {
+    "en": "3-color conversion",
+    "ja": "3色変換",
+    "zh": "三色转换"
+  },
+  "3색으로 변환했습니다.": {
+    "en": "Converted to 3 colors.",
+    "ja": "3色に変換しました。",
+    "zh": "已转换为三色。"
+  },
+  "보기(&V)": {
+    "en": "&View",
+    "ja": "表示(&V)",
+    "zh": "视图(&V)"
+  },
+  "화면 맞춤": {
+    "en": "Fit to view",
+    "ja": "画面に合わせる",
+    "zh": "适应窗口"
+  },
+  "확대": {
+    "en": "Zoom in",
+    "ja": "拡大",
+    "zh": "放大"
+  },
+  "축소": {
+    "en": "Zoom out",
+    "ja": "縮小",
+    "zh": "缩小"
+  },
+  "도움말(&H)": {
+    "en": "&Help",
+    "ja": "ヘルプ(&H)",
+    "zh": "帮助(&H)"
+  },
+  "단축키": {
+    "en": "Keyboard shortcuts",
+    "ja": "キーボードショートカット",
+    "zh": "快捷键"
+  },
+  "B  펜\nL  직선\nR  사각형\nG  채우기\nH  이동\nI  스포이드\nP  다각형\nT  회전\nC  자르기\nO  원점 이동\n\n1 / 2 / 3  흰색 / 검정 / 회색\n[ / ]  굵기 조절\nF  화면 맞춤\n0  100%\nEnter  회전·자르기·원점 적용\nEsc  그리는 중인 획·미리보기 취소\n\n휠  확대·축소\n가운데 버튼 또는 Space+드래그  이동\n\nCtrl (macOS Cmd)+O  열기\nCtrl/Cmd+S  저장\nCtrl/Cmd+Shift+S  다른 이름으로 저장\nCtrl/Cmd+Z  실행 취소\nCtrl/Cmd+Shift+Z  다시 실행": {
+    "en": "B  Pen\nL  Line\nR  Rectangle\nG  Fill\nH  Pan\nI  Eyedropper\nP  Polygon\nT  Rotate\nC  Crop\nO  Move origin\n\n1 / 2 / 3  White / Black / Gray\n[ / ]  Brush width\nF  Fit to view\n0  100%\nEnter  Apply rotation, crop or origin\nEsc  Cancel stroke or preview\n\nWheel  Zoom\nMiddle button or Space+drag  Pan\n\nCtrl (Cmd on macOS)+O  Open\nCtrl/Cmd+S  Save\nCtrl/Cmd+Shift+S  Save as\nCtrl/Cmd+Z  Undo\nCtrl/Cmd+Shift+Z  Redo",
+    "ja": "B  ペン\nL  直線\nR  四角形\nG  塗りつぶし\nH  移動\nI  スポイト\nP  多角形\nT  回転\nC  切り抜き\nO  原点移動\n\n1 / 2 / 3  白 / 黒 / グレー\n[ / ]  ブラシの太さ\nF  画面に合わせる\n0  100%\nEnter  回転・切り抜き・原点を適用\nEsc  描画・プレビューを取消\n\nホイール  拡大・縮小\n中央ボタンまたは Space+ドラッグ  移動\n\nCtrl (macOS は Cmd)+O  開く\nCtrl/Cmd+S  保存\nCtrl/Cmd+Shift+S  名前を付けて保存\nCtrl/Cmd+Z  元に戻す\nCtrl/Cmd+Shift+Z  やり直す",
+    "zh": "B  画笔\nL  直线\nR  矩形\nG  填充\nH  平移\nI  取色器\nP  多边形\nT  旋转\nC  裁剪\nO  移动原点\n\n1 / 2 / 3  白色 / 黑色 / 灰色\n[ / ]  笔刷宽度\nF  适应窗口\n0  100%\nEnter  应用旋转、裁剪或原点\nEsc  取消绘制或预览\n\n滚轮  缩放\n鼠标中键或 Space+拖动  平移\n\nCtrl (macOS 为 Cmd)+O  打开\nCtrl/Cmd+S  保存\nCtrl/Cmd+Shift+S  另存为\nCtrl/Cmd+Z  撤销\nCtrl/Cmd+Shift+Z  重做"
+  },
+  "정보": {
+    "en": "About",
+    "ja": "このアプリについて",
+    "zh": "关于"
+  },
+  "<b>Map Editor %1</b><p>PGM / YAML 지도 편집기</p><p>Qt 6 · MIT License</p>": {
+    "en": "<b>Map Editor %1</b><p>PGM / YAML map editor</p><p>Qt 6 · MIT License</p>",
+    "ja": "<b>Map Editor %1</b><p>PGM / YAML マップエディター</p><p>Qt 6 · MIT License</p>",
+    "zh": "<b>Map Editor %1</b><p>PGM / YAML 地图编辑器</p><p>Qt 6 · MIT License</p>"
+  },
+  "그린 구역의 제한을 해제합니다.": {
+    "en": "Remove restrictions from painted zones.",
+    "ja": "描いた区域の制限を解除します。",
+    "zh": "解除已绘制区域的限制。"
+  },
+  "빨강: 진입 금지": {
+    "en": "Red: keepout",
+    "ja": "赤：進入禁止",
+    "zh": "红色：禁行"
+  },
+  "그리기: 최대 속도의 %1%": {
+    "en": "Paint: %1% of maximum speed",
+    "ja": "描画：最高速度の %1%",
+    "zh": "绘制：最高速度的 %1%"
+  },
+  "속도 %1%": {
+    "en": "Speed %1%",
+    "ja": "速度 %1%",
+    "zh": "速度 %1%"
+  },
+  "회색 %1 (%2)%3": {
+    "en": "Gray %1 (%2)%3",
+    "ja": "グレー %1 (%2)%3",
+    "zh": "灰色 %1 (%2)%3"
+  },
+  " · 추출값": {
+    "en": " · sampled",
+    "ja": " · 取得値",
+    "zh": " · 取样值"
+  },
+  "회전을 적용했습니다.": {
+    "en": "Rotation applied.",
+    "ja": "回転を適用しました。",
+    "zh": "已应用旋转。"
+  },
+  "지도를 자르고 원점을 보정했습니다.": {
+    "en": "Map cropped and origin adjusted.",
+    "ja": "マップを切り抜き、原点を補正しました。",
+    "zh": "已裁剪地图并调整原点。"
+  },
+  "원점 이동": {
+    "en": "Move origin",
+    "ja": "原点の移動",
+    "zh": "移动原点"
+  },
+  "마스크의 수정 사항을 먼저 저장하세요.": {
+    "en": "Save your mask changes first.",
+    "ja": "先にマスクの変更を保存してください。",
+    "zh": "请先保存掩码修改。"
+  },
+  "마스크에 저장하지 않은 수정 사항이 있습니다.\n수정 사항을 저장하면 지도 크기와 좌표를 편집할 수 있습니다.": {
+    "en": "The mask has unsaved changes.\nSave them to edit the map size and coordinates.",
+    "ja": "マスクに未保存の変更があります。\n保存するとマップのサイズと座標を編集できます。",
+    "zh": "掩码有未保存的修改。\n保存后即可编辑地图尺寸和坐标。"
+  },
+  "마스크 저장 후 계속": {
+    "en": "Save masks and continue",
+    "ja": "マスクを保存して続行",
+    "zh": "保存掩码并继续"
+  },
+  "취소": {
+    "en": "Cancel",
+    "ja": "キャンセル",
+    "zh": "取消"
+  },
+  "마스크 YAML 열기": {
+    "en": "Open mask YAML",
+    "ja": "マスク YAML を開く",
+    "zh": "打开掩码 YAML"
+  },
+  "YAML 마스크 (*.yaml *.yml)": {
+    "en": "YAML mask (*.yaml *.yml)",
+    "ja": "YAML マスク (*.yaml *.yml)",
+    "zh": "YAML 掩码 (*.yaml *.yml)"
+  },
+  "저장하지 않은 마스크": {
+    "en": "Unsaved mask",
+    "ja": "未保存のマスク",
+    "zh": "未保存的掩码"
+  },
+  "현재 마스크를 저장할까요?": {
+    "en": "Save the current mask?",
+    "ja": "現在のマスクを保存しますか？",
+    "zh": "保存当前掩码吗？"
+  },
+  "마스크를 열었습니다.": {
+    "en": "Mask opened.",
+    "ja": "マスクを開きました。",
+    "zh": "已打开掩码。"
+  },
+  "마스크의 변경 내용을 저장할까요?": {
+    "en": "Save changes to the masks?",
+    "ja": "マスクの変更を保存しますか？",
+    "zh": "保存掩码修改吗？"
+  },
+  "지도 격자가 바뀌어 저장된 마스크 표시를 닫았습니다. 마스크 파일은 그대로 보존됩니다.": {
+    "en": "The map grid changed, so saved mask views were closed. Mask files are preserved.",
+    "ja": "マップの格子が変わったため、保存済みマスクの表示を閉じました。ファイルは保持されています。",
+    "zh": "地图网格已改变，已关闭保存的掩码视图。掩码文件已保留。"
+  },
+  "미확인 셀입니다.": {
+    "en": "This cell is unknown.",
+    "ja": "このセルは不明です。",
+    "zh": "此单元格为未知。"
+  },
+  "제한 해제 브러시 선택": {
+    "en": "Clear-restriction brush selected",
+    "ja": "制限解除ブラシを選択",
+    "zh": "已选择解除限制笔刷"
+  },
+  "진입 금지 구역": {
+    "en": "Keepout zone",
+    "ja": "進入禁止区域",
+    "zh": "禁行区域"
+  },
+  "추출값 %1": {
+    "en": "Sampled value %1",
+    "ja": "取得値 %1",
+    "zh": "取样值 %1"
+  },
+  "%1 마스크": {
+    "en": "%1 mask",
+    "ja": "%1マスク",
+    "zh": "%1掩码"
+  },
+  "열린 지도 없음": {
+    "en": "No map open",
+    "ja": "マップが開かれていません",
+    "zh": "未打开地图"
+  },
+  "미리보기 · 적용 전": {
+    "en": "Preview · not applied",
+    "ja": "プレビュー · 未適用",
+    "zh": "预览 · 未应用"
+  },
+  "수정됨": {
+    "en": "Modified",
+    "ja": "変更あり",
+    "zh": "已修改"
+  },
+  "구역 없음": {
+    "en": "No zones",
+    "ja": "区域なし",
+    "zh": "无区域"
+  },
+  "저장됨": {
+    "en": "Saved",
+    "ja": "保存済み",
+    "zh": "已保存"
+  },
+  "시계 방향이 +각도입니다.": {
+    "en": "Positive angles rotate clockwise.",
+    "ja": "正の角度は時計回りです。",
+    "zh": "正角度为顺时针。"
+  },
+  "남길 영역을 드래그하세요.": {
+    "en": "Drag the area to keep.",
+    "ja": "残す範囲をドラッグしてください。",
+    "zh": "拖出要保留的区域。"
+  },
+  "월드 좌표 (0, 0)의 위치를 클릭하거나 드래그하세요.": {
+    "en": "Click or drag the position of world (0, 0).",
+    "ja": "ワールド座標 (0, 0) の位置をクリックまたはドラッグします。",
+    "zh": "点击或拖动世界坐标 (0, 0) 的位置。"
+  },
+  "지도를 열면 레이어와 좌표를\n여기에서 조정할 수 있습니다.": {
+    "en": "Open a map to adjust\nlayers and coordinates here.",
+    "ja": "マップを開くと、ここで\nレイヤーと座標を調整できます。",
+    "zh": "打开地图后，可在此\n调整图层和坐标。"
+  },
+  "\nYAML 없음 (저장 시 생성)": {
+    "en": "\nNo YAML (created on save)",
+    "ja": "\nYAML なし (保存時に作成)",
+    "zh": "\n无 YAML（保存时创建）"
+  },
+  "지도 열기 필요": {
+    "en": "Open a map first",
+    "ja": "マップを開いてください",
+    "zh": "请先打开地图"
+  },
+  "마스크 수정 중\n저장 후 좌표 편집": {
+    "en": "Mask modified\nSave to edit coordinates",
+    "ja": "マスク編集中\n保存後に座標編集",
+    "zh": "掩码已修改\n保存后编辑坐标"
+  },
+  "마스크 수정 사항을 저장하면 지도 크기와 좌표를 변경할 수 있습니다.": {
+    "en": "Save mask changes to edit the map size and coordinates.",
+    "ja": "マスクの変更を保存するとマップのサイズと座標を編集できます。",
+    "zh": "保存掩码修改后即可编辑地图尺寸和坐标。"
+  },
+  "회전 미리보기": {
+    "en": "Preview rotation",
+    "ja": "回転をプレビュー",
+    "zh": "预览旋转"
+  },
+  "지도 여백 자르기": {
+    "en": "Crop map margins",
+    "ja": "マップの余白を切り抜く",
+    "zh": "裁剪地图边缘"
+  },
+  "원점 위치 지정": {
+    "en": "Set origin position",
+    "ja": "原点の位置を指定",
+    "zh": "设置原点位置"
+  },
+  "미리보기입니다. 적용 전에는 원본 픽셀이 바뀌지 않습니다.": {
+    "en": "Preview only. Pixels change when you apply.",
+    "ja": "プレビューです。適用するまで元のピクセルは変わりません。",
+    "zh": "当前为预览。应用前不会改变原始像素。"
+  },
+  "남길 영역을 선택하세요.": {
+    "en": "Select the area to keep.",
+    "ja": "残す範囲を選択してください。",
+    "zh": "请选择要保留的区域。"
+  },
+  "남길 크기: %1 × %2 px\nEnter로 적용 · Esc로 선택 취소": {
+    "en": "Keep: %1 × %2 px\nEnter to apply · Esc to cancel",
+    "ja": "残すサイズ：%1 × %2 px\nEnter で適用 · Esc で取消",
+    "zh": "保留尺寸：%1 × %2 px\nEnter 应用 · Esc 取消"
+  },
+  "빨강으로 표시된 구역은 진입 금지입니다.": {
+    "en": "Red zones prohibit entry.",
+    "ja": "赤い区域は進入禁止です。",
+    "zh": "红色区域禁止进入。"
+  },
+  "파랑 영역은 설정한 비율로 속도를 제한합니다.": {
+    "en": "Blue zones limit speed to the selected percentage.",
+    "ja": "青い区域は設定した割合に速度を制限します。",
+    "zh": "蓝色区域将速度限制为设定的比例。"
+  },
+  "마스크 수정 사항을 저장한 뒤 원점 변경을 취소할 수 있습니다.": {
+    "en": "Save mask changes before undoing the origin change.",
+    "ja": "原点の変更を取り消す前に、マスクの変更を保存してください。",
+    "zh": "撤销原点修改前，请先保存掩码修改。"
+  },
+  "적용 전 속성 변경 취소": {
+    "en": "Revert unapplied property changes",
+    "ja": "未適用のプロパティ変更を取り消す",
+    "zh": "还原尚未应用的属性修改"
+  },
+  "변경됨 (적용 전)": {
+    "en": "Changed (not applied)",
+    "ja": "変更あり (未適用)",
+    "zh": "已修改（未应用）"
+  },
+  "마스크 수정 사항을 저장한 뒤 원점과 해상도를 변경하세요.": {
+    "en": "Save mask changes before editing the origin and resolution.",
+    "ja": "原点と解像度を編集する前に、マスクの変更を保存してください。",
+    "zh": "编辑原点和分辨率前，请先保存掩码修改。"
+  },
+  "지도 (*.yaml *.yml *.pgm *.PGM *.YAML *.YML);;모든 파일 (*)": {
+    "en": "Map (*.yaml *.yml *.pgm *.PGM *.YAML *.YML);;All files (*)",
+    "ja": "マップ (*.yaml *.yml *.pgm *.PGM *.YAML *.YML);;すべてのファイル (*)",
+    "zh": "地图 (*.yaml *.yml *.pgm *.PGM *.YAML *.YML);;所有文件 (*)"
+  },
+  "%1 마스크 저장": {
+    "en": "Save %1 mask",
+    "ja": "%1マスクを保存",
+    "zh": "保存%1掩码"
+  },
+  "지도 저장 (YAML + PGM)": {
+    "en": "Save map (YAML + PGM)",
+    "ja": "マップを保存 (YAML + PGM)",
+    "zh": "保存地图（YAML + PGM）"
+  },
+  "YAML 지도 (*.yaml *.yml)": {
+    "en": "YAML map (*.yaml *.yml)",
+    "ja": "YAML マップ (*.yaml *.yml)",
+    "zh": "YAML 地图 (*.yaml *.yml)"
+  },
+  "PGM 덮어쓰기": {
+    "en": "Overwrite PGM",
+    "ja": "PGM を上書き",
+    "zh": "覆盖 PGM"
+  },
+  "\n\n기존 PGM 파일도 덮어쓸까요?": {
+    "en": "\n\nOverwrite the existing PGM file too?",
+    "ja": "\n\n既存の PGM ファイルも上書きしますか？",
+    "zh": "\n\n同时覆盖现有的 PGM 文件吗？"
+  },
+  "저장: ": {
+    "en": "Saved: ",
+    "ja": "保存先：",
+    "zh": "已保存："
+  },
+  "저장하지 않은 변경": {
+    "en": "Unsaved changes",
+    "ja": "未保存の変更",
+    "zh": "未保存的修改"
+  },
+  "변경 내용을 저장할까요?": {
+    "en": "Save your changes?",
+    "ja": "変更を保存しますか？",
+    "zh": "保存修改吗？"
+  },
+  "지도를 열어 시작하세요": {
+    "en": "Open a map to get started",
+    "ja": "マップを開いて開始",
+    "zh": "打开地图以开始编辑"
+  },
+  "YAML 또는 PGM 파일을 여기에 끌어 놓으세요": {
+    "en": "Drop a YAML or PGM file here",
+    "ja": "YAML または PGM ファイルをここにドロップ",
+    "zh": "将 YAML 或 PGM 文件拖放到此处"
+  },
+  "  ·  지도 열기": {
+    "en": "  ·  Open map",
+    "ja": "  ·  マップを開く",
+    "zh": "  ·  打开地图"
+  },
+  "영역 채우기": {
+    "en": "Flood fill",
+    "ja": "領域の塗りつぶし",
+    "zh": "区域填充"
+  },
+  "지도 속성 변경": {
+    "en": "Change map properties",
+    "ja": "マップのプロパティを変更",
+    "zh": "修改地图属性"
+  },
+  "유효한 이미지가 없습니다.": {
+    "en": "No valid image.",
+    "ja": "有効な画像がありません。",
+    "zh": "没有有效图像。"
+  },
+  "지도 크기 제한을 초과했습니다.": {
+    "en": "Map size exceeds the limit.",
+    "ja": "マップのサイズが上限を超えています。",
+    "zh": "地图尺寸超出限制。"
+  },
+  "메모리 할당 실패": {
+    "en": "Could not allocate memory",
+    "ja": "メモリを確保できません",
+    "zh": "无法分配内存"
+  },
+  "회전 후 지도 크기가 32 Mi 픽셀을 초과합니다.": {
+    "en": "Rotated map would exceed 32 Mi pixels.",
+    "ja": "回転後のマップが 32 Mi ピクセルを超えます。",
+    "zh": "旋转后的地图将超过 32 Mi 像素。"
+  },
+  "회전 이미지 메모리 할당 실패": {
+    "en": "Could not allocate the rotated image",
+    "ja": "回転画像のメモリを確保できません",
+    "zh": "无法为旋转图像分配内存"
+  },
+  "남길 영역을 먼저 선택하세요.": {
+    "en": "Select the area to keep first.",
+    "ja": "先に残す範囲を選択してください。",
+    "zh": "请先选择要保留的区域。"
+  },
+  "자르기 이미지 메모리 할당 실패": {
+    "en": "Could not allocate the cropped image",
+    "ja": "切り抜き画像のメモリを確保できません",
+    "zh": "无法为裁剪图像分配内存"
+  },
+  "열린 지도가 없습니다.": {
+    "en": "No map is open.",
+    "ja": "マップが開かれていません。",
+    "zh": "未打开任何地图。"
+  },
+  "열어 둔 지도 파일이 외부에서 변경되었거나 삭제되었습니다. 다시 열거나 다른 이름으로 저장하세요.": {
+    "en": "The map files were changed or deleted externally. Reopen them or use Save as.",
+    "ja": "開いているマップファイルが外部で変更または削除されました。開き直すか、名前を付けて保存してください。",
+    "zh": "地图文件已被外部修改或删除。请重新打开或使用“另存为”。"
+  },
+  "파일을 열 수 없습니다: %1\n%2": {
+    "en": "Could not open file: %1\n%2",
+    "ja": "ファイルを開けません：%1\n%2",
+    "zh": "无法打开文件：%1\n%2"
+  },
+  "파일 크기 제한을 초과했습니다: %1": {
+    "en": "File exceeds the size limit: %1",
+    "ja": "ファイルサイズが上限を超えています：%1",
+    "zh": "文件大小超出限制：%1"
+  },
+  "PGM 헤더 또는 픽셀 데이터가 잘렸습니다.": {
+    "en": "PGM header or pixel data is truncated.",
+    "ja": "PGM ヘッダーまたはピクセルデータが途中で切れています。",
+    "zh": "PGM 文件头或像素数据不完整。"
+  },
+  "잘못된 PGM 정수입니다.": {
+    "en": "Invalid PGM integer.",
+    "ja": "PGM の整数が無効です。",
+    "zh": "PGM 整数无效。"
+  },
+  "PGM 정수 범위를 초과했습니다.": {
+    "en": "PGM integer is out of range.",
+    "ja": "PGM の整数が範囲外です。",
+    "zh": "PGM 整数超出范围。"
+  },
+  "저장 실패: %1\n%2": {
+    "en": "Save failed: %1\n%2",
+    "ja": "保存に失敗しました：%1\n%2",
+    "zh": "保存失败：%1\n%2"
+  },
+  "백업 폴더를 만들 수 없습니다: ": {
+    "en": "Could not create backup folder: ",
+    "ja": "バックアップフォルダーを作成できません：",
+    "zh": "无法创建备份文件夹："
+  },
+  "기존 파일을 백업할 수 없어 저장을 중단했습니다: ": {
+    "en": "Save stopped because existing files could not be backed up: ",
+    "ja": "既存ファイルをバックアップできないため保存を中止しました：",
+    "zh": "无法备份现有文件，已停止保存："
+  },
+  "심볼릭 링크에는 덮어쓸 수 없습니다. 다른 이름으로 저장하세요: ": {
+    "en": "Cannot overwrite a symbolic link. Use Save as: ",
+    "ja": "シンボリックリンクは上書きできません。名前を付けて保存してください：",
+    "zh": "无法覆盖符号链接。请使用“另存为”："
+  },
+  "쓰기 가능한 일반 파일이 아닙니다: ": {
+    "en": "Not a writable regular file: ",
+    "ja": "書き込み可能な通常ファイルではありません：",
+    "zh": "不是可写的普通文件："
+  },
+  "폴더에 쓸 수 없습니다: ": {
+    "en": "Cannot write to folder: ",
+    "ja": "フォルダーに書き込めません：",
+    "zh": "无法写入文件夹："
+  },
+  "resolution은 0보다 큰 유한한 값이어야 합니다.": {
+    "en": "resolution must be finite and greater than 0.",
+    "ja": "resolution は 0 より大きい有限の値にしてください。",
+    "zh": "resolution 必须为大于 0 的有限数值。"
+  },
+  "origin 값은 유한한 숫자여야 합니다.": {
+    "en": "origin values must be finite numbers.",
+    "ja": "origin は有限の数値にしてください。",
+    "zh": "origin 必须为有限数值。"
+  },
+  "negate는 0 또는 1이어야 합니다.": {
+    "en": "negate must be 0 or 1.",
+    "ja": "negate は 0 または 1 にしてください。",
+    "zh": "negate 必须为 0 或 1。"
+  },
+  "임계값은 0 < free_thresh < occupied_thresh < 1이어야 합니다.": {
+    "en": "Thresholds must satisfy 0 < free_thresh < occupied_thresh < 1.",
+    "ja": "しきい値は 0 < free_thresh < occupied_thresh < 1 にしてください。",
+    "zh": "阈值必须满足 0 < free_thresh < occupied_thresh < 1。"
+  },
+  "두 임계값 사이에 회색 픽셀을 표현할 공간이 없습니다. 간격을 넓히세요.": {
+    "en": "The thresholds leave no gray pixel value between them. Increase the gap.",
+    "ja": "しきい値の間にグレーのピクセル値を表す余地がありません。間隔を広げてください。",
+    "zh": "两个阈值之间没有可用的灰色像素值。请增大间隔。"
+  },
+  "원본 지도는 trinary 모드만 지원합니다. raw 마스크는 원본 지도를 연 뒤 '마스크 열기'를 사용하세요.": {
+    "en": "Reference maps support trinary mode only. For raw masks, open the reference map first, then use Open mask.",
+    "ja": "元のマップは trinary モードのみ対応しています。raw マスクは元のマップを開いてから「マスクを開く」を使用してください。",
+    "zh": "原始地图仅支持 trinary 模式。使用 raw 掩码时，请先打开原始地图，再使用“打开掩码”。"
+  },
+  "P2 또는 P5 PGM 파일이 아닙니다.": {
+    "en": "Not a P2 or P5 PGM file.",
+    "ja": "P2 または P5 の PGM ファイルではありません。",
+    "zh": "不是 P2 或 P5 PGM 文件。"
+  },
+  "잘못된 지도 크기입니다. 최대 32 Mi 픽셀까지 지원합니다.": {
+    "en": "Invalid map size. Up to 32 Mi pixels are supported.",
+    "ja": "マップサイズが無効です。最大 32 Mi ピクセルまで対応しています。",
+    "zh": "地图尺寸无效。最多支持 32 Mi 像素。"
+  },
+  "PGM Maxval 범위는 1~65535입니다.": {
+    "en": "PGM Maxval must be between 1 and 65535.",
+    "ja": "PGM の Maxval は 1～65535 にしてください。",
+    "zh": "PGM 的 Maxval 必须为 1～65535。"
+  },
+  "무손실 지도 편집을 위해 Maxval 255인 8-bit PGM만 지원합니다. 먼저 8-bit로 변환하세요.": {
+    "en": "Lossless editing requires an 8-bit PGM with Maxval 255. Convert it to 8-bit first.",
+    "ja": "無損失の編集には Maxval 255 の 8-bit PGM が必要です。先に 8-bit に変換してください。",
+    "zh": "无损编辑仅支持 Maxval 为 255 的 8-bit PGM。请先转换为 8-bit。"
+  },
+  "지도 메모리를 할당할 수 없습니다.": {
+    "en": "Could not allocate map memory.",
+    "ja": "マップのメモリを確保できません。",
+    "zh": "无法为地图分配内存。"
+  },
+  "PGM 바이너리 구분자가 없습니다.": {
+    "en": "Missing PGM binary separator.",
+    "ja": "PGM のバイナリ区切りがありません。",
+    "zh": "缺少 PGM 二进制分隔符。"
+  },
+  "PGM 픽셀 수가 크기와 다릅니다. 잘린 파일 또는 다중 이미지입니다.": {
+    "en": "PGM pixel count does not match its dimensions. The file may be truncated or contain multiple images.",
+    "ja": "PGM のピクセル数がサイズと一致しません。データの欠落または複数画像の可能性があります。",
+    "zh": "PGM 像素数量与尺寸不符。文件可能不完整或包含多幅图像。"
+  },
+  "PGM 픽셀 값이 Maxval보다 큽니다.": {
+    "en": "PGM pixel value exceeds Maxval.",
+    "ja": "PGM のピクセル値が Maxval を超えています。",
+    "zh": "PGM 像素值超过 Maxval。"
+  },
+  "PGM 뒤에 추가 픽셀 데이터가 있습니다.": {
+    "en": "Extra pixel data after the PGM image.",
+    "ja": "PGM 画像の後に余分なピクセルデータがあります。",
+    "zh": "PGM 图像之后存在多余的像素数据。"
+  },
+  "유효한 8-bit 지도 이미지가 없습니다.": {
+    "en": "No valid 8-bit map image.",
+    "ja": "有効な 8-bit マップ画像がありません。",
+    "zh": "没有有效的 8-bit 地图图像。"
+  },
+  ".yaml, .yml 또는 .pgm 파일을 선택하세요.": {
+    "en": "Select a .yaml, .yml or .pgm file.",
+    "ja": ".yaml、.yml または .pgm ファイルを選択してください。",
+    "zh": "请选择 .yaml、.yml 或 .pgm 文件。"
+  },
+  "YAML 최상위는 매핑이어야 합니다.": {
+    "en": "The YAML root must be a mapping.",
+    "ja": "YAML の最上位はマッピングにしてください。",
+    "zh": "YAML 顶层必须为映射。"
+  },
+  "YAML image 경로가 비어 있습니다.": {
+    "en": "The YAML image path is empty.",
+    "ja": "YAML の image パスが空です。",
+    "zh": "YAML 的 image 路径为空。"
+  },
+  "YAML image는 .pgm 파일을 가리켜야 합니다.": {
+    "en": "YAML image must point to a .pgm file.",
+    "ja": "YAML の image は .pgm ファイルを指す必要があります。",
+    "zh": "YAML 的 image 必须指向 .pgm 文件。"
+  },
+  "같은 이름의 YAML이 다른 PGM을 가리킵니다. 올바른 YAML을 직접 열어 주세요.": {
+    "en": "The matching YAML points to a different PGM. Open the correct YAML directly.",
+    "ja": "同名の YAML が別の PGM を指しています。正しい YAML を直接開いてください。",
+    "zh": "同名 YAML 指向了另一个 PGM。请直接打开正确的 YAML。"
+  },
+  "origin은 [x, y, yaw] 세 값이어야 합니다.": {
+    "en": "origin must contain three values: [x, y, yaw].",
+    "ja": "origin は [x, y, yaw] の3つの値にしてください。",
+    "zh": "origin 必须包含 [x, y, yaw] 三个值。"
+  },
+  "YAML 형식 오류: %1": {
+    "en": "YAML format error: %1",
+    "ja": "YAML の形式エラー：%1",
+    "zh": "YAML 格式错误：%1"
+  },
+  "YAML 직렬화 실패": {
+    "en": "YAML serialization failed",
+    "ja": "YAML のシリアライズに失敗しました",
+    "zh": "YAML 序列化失败"
+  },
+  "저장할 YAML 파일명은 .yaml 또는 .yml로 끝나야 합니다.": {
+    "en": "The YAML filename must end with .yaml or .yml.",
+    "ja": "保存する YAML ファイル名は .yaml または .yml で終わる必要があります。",
+    "zh": "保存的 YAML 文件名必须以 .yaml 或 .yml 结尾。"
+  },
+  "PGM과 YAML은 서로 다른 경로여야 합니다.": {
+    "en": "PGM and YAML paths must be different.",
+    "ja": "PGM と YAML は異なるパスにしてください。",
+    "zh": "PGM 和 YAML 的路径必须不同。"
+  },
+  "임시 파일 기록에 실패했습니다. 기존 지도는 변경되지 않았습니다.": {
+    "en": "Could not write temporary files. The existing map is unchanged.",
+    "ja": "一時ファイルを書き込めません。既存のマップは変更されていません。",
+    "zh": "无法写入临时文件。原有地图未改变。"
+  },
+  "PGM 저장에 실패했습니다. 기존 지도는 변경되지 않았습니다.": {
+    "en": "Could not save PGM. The existing map is unchanged.",
+    "ja": "PGM を保存できません。既存のマップは変更されていません。",
+    "zh": "无法保存 PGM。原有地图未改变。"
+  },
+  "새 PGM 삭제 실패": {
+    "en": "Could not delete the new PGM",
+    "ja": "新しい PGM を削除できません",
+    "zh": "无法删除新 PGM"
+  },
+  "YAML 저장 및 PGM 복구에 실패했습니다. 백업에서 복원하세요: ": {
+    "en": "Could not save YAML or restore PGM. Restore from backup: ",
+    "ja": "YAML の保存と PGM の復元に失敗しました。バックアップから復元してください：",
+    "zh": "保存 YAML 和恢复 PGM 均失败。请从备份恢复："
+  },
+  "YAML 저장에 실패하여 PGM을 원상복구했습니다. 백업: ": {
+    "en": "YAML save failed; PGM was restored. Backup: ",
+    "ja": "YAML の保存に失敗したため PGM を復元しました。バックアップ：",
+    "zh": "YAML 保存失败，已还原 PGM。备份："
+  },
+  "원본 지도를 먼저 열어 주세요.": {
+    "en": "Open the reference map first.",
+    "ja": "先に元のマップを開いてください。",
+    "zh": "请先打开原始地图。"
+  },
+  "Nav2 필터는 회전된 원점(Yaw)을 지원하지 않습니다. Yaw가 0인 지도를 사용하세요.": {
+    "en": "Nav2 filters do not support rotated origins (yaw). Use a map with yaw 0.",
+    "ja": "Nav2 フィルターは原点の回転 (Yaw) に対応していません。Yaw が 0 のマップを使用してください。",
+    "zh": "Nav2 滤波器不支持旋转的原点（Yaw）。请使用 Yaw 为 0 的地图。"
+  },
+  "다른 레이어의 파일에는 덮어쓸 수 없습니다. 별도의 이름으로 저장하세요: ": {
+    "en": "Cannot overwrite another layer's files. Save under a different name: ",
+    "ja": "別のレイヤーのファイルは上書きできません。別の名前で保存してください：",
+    "zh": "无法覆盖其他图层的文件。请另存为其他名称："
+  },
+  "마스크 메모리를 할당할 수 없습니다.": {
+    "en": "Could not allocate mask memory.",
+    "ja": "マスクのメモリを確保できません。",
+    "zh": "无法为掩码分配内存。"
+  },
+  "마스크는 좌표 정보가 있는 YAML 파일로 열어 주세요.": {
+    "en": "Open masks using a YAML file with coordinate information.",
+    "ja": "マスクは座標情報を含む YAML ファイルから開いてください。",
+    "zh": "请通过包含坐标信息的 YAML 文件打开掩码。"
+  },
+  "마스크의 크기·해상도·원점이 원본 지도와 다릅니다. 같은 지도에서 만든 마스크를 선택하세요.": {
+    "en": "Mask size, resolution or origin differs from the reference map. Select a mask made for this map.",
+    "ja": "マスクのサイズ・解像度・原点が元のマップと異なります。同じマップで作成したマスクを選択してください。",
+    "zh": "掩码的尺寸、分辨率或原点与原始地图不同。请选择为此地图制作的掩码。"
+  },
+  "원본 지도 파일을 마스크로 사용할 수 없습니다. 별도의 마스크를 선택하세요.": {
+    "en": "The reference map cannot be used as a mask. Select a separate mask.",
+    "ja": "元のマップはマスクとして使えません。別のマスクを選択してください。",
+    "zh": "原始地图不能用作掩码。请选择单独的掩码。"
+  },
+  "선택한 레이어와 마스크 종류가 다릅니다.": {
+    "en": "The mask type does not match the selected layer.",
+    "ja": "マスクの種類が選択したレイヤーと異なります。",
+    "zh": "掩码类型与所选图层不符。"
+  },
+  "마스크 값은 0~100 또는 미확인(255)이어야 합니다.": {
+    "en": "Mask values must be 0–100 or unknown (255).",
+    "ja": "マスク値は 0～100 または不明 (255) にしてください。",
+    "zh": "掩码值必须为 0～100 或未知值（255）。"
+  },
+  "진입 금지 마스크는 0(제한 없음)과 100(진입 금지)을 사용합니다. 가중치 마스크는 지원하지 않습니다.": {
+    "en": "Keepout masks use 0 (unrestricted) and 100 (keepout). Weighted masks are not supported.",
+    "ja": "進入禁止マスクは 0 (制限なし) と 100 (進入禁止) を使用します。重み付きマスクには対応していません。",
+    "zh": "禁行掩码使用 0（无限制）和 100（禁行）。不支持加权掩码。"
+  },
+  "Save": {
+    "ko": "저장",
+    "en": "Save",
+    "ja": "保存",
+    "zh": "保存"
+  },
+  "&Save": {
+    "ko": "저장",
+    "en": "Save",
+    "ja": "保存",
+    "zh": "保存"
+  },
+  "Cancel": {
+    "ko": "취소",
+    "en": "Cancel",
+    "ja": "キャンセル",
+    "zh": "取消"
+  },
+  "&Cancel": {
+    "ko": "취소",
+    "en": "Cancel",
+    "ja": "キャンセル",
+    "zh": "取消"
+  },
+  "Discard": {
+    "ko": "저장 안 함",
+    "en": "Discard",
+    "ja": "保存しない",
+    "zh": "不保存"
+  },
+  "&Discard": {
+    "ko": "저장 안 함",
+    "en": "Discard",
+    "ja": "保存しない",
+    "zh": "不保存"
+  },
+  "Close": {
+    "ko": "닫기",
+    "en": "Close",
+    "ja": "閉じる",
+    "zh": "关闭"
+  },
+  "&Close": {
+    "ko": "닫기",
+    "en": "Close",
+    "ja": "閉じる",
+    "zh": "关闭"
+  },
+  "Open": {
+    "ko": "열기",
+    "en": "Open",
+    "ja": "開く",
+    "zh": "打开"
+  },
+  "&Open": {
+    "ko": "열기",
+    "en": "Open",
+    "ja": "開く",
+    "zh": "打开"
+  },
+  "Yes": {
+    "ko": "예",
+    "en": "Yes",
+    "ja": "はい",
+    "zh": "是"
+  },
+  "&Yes": {
+    "ko": "예",
+    "en": "Yes",
+    "ja": "はい",
+    "zh": "是"
+  },
+  "No": {
+    "ko": "아니요",
+    "en": "No",
+    "ja": "いいえ",
+    "zh": "否"
+  },
+  "&No": {
+    "ko": "아니요",
+    "en": "No",
+    "ja": "いいえ",
+    "zh": "否"
+  },
+  "OK": {
+    "ko": "확인",
+    "en": "OK",
+    "ja": "OK",
+    "zh": "确定"
+  },
+  "&OK": {
+    "ko": "확인",
+    "en": "OK",
+    "ja": "OK",
+    "zh": "确定"
+  },
+  "Apply": {
+    "ko": "적용",
+    "en": "Apply",
+    "ja": "適用",
+    "zh": "应用"
+  },
+  "&Apply": {
+    "ko": "적용",
+    "en": "Apply",
+    "ja": "適用",
+    "zh": "应用"
+  },
+  "Reset": {
+    "ko": "초기화",
+    "en": "Reset",
+    "ja": "リセット",
+    "zh": "重置"
+  },
+  "&Reset": {
+    "ko": "초기화",
+    "en": "Reset",
+    "ja": "リセット",
+    "zh": "重置"
+  },
+  "Save All": {
+    "ko": "모두 저장",
+    "en": "Save All",
+    "ja": "すべて保存",
+    "zh": "全部保存"
+  },
+  "&Save All": {
+    "ko": "모두 저장",
+    "en": "Save All",
+    "ja": "すべて保存",
+    "zh": "全部保存"
+  },
+  "Help": {
+    "ko": "도움말",
+    "en": "Help",
+    "ja": "ヘルプ",
+    "zh": "帮助"
+  },
+  "&Help": {
+    "ko": "도움말",
+    "en": "Help",
+    "ja": "ヘルプ",
+    "zh": "帮助"
+  },
+  "Abort": {
+    "ko": "중단",
+    "en": "Abort",
+    "ja": "中止",
+    "zh": "中止"
+  },
+  "&Abort": {
+    "ko": "중단",
+    "en": "Abort",
+    "ja": "中止",
+    "zh": "中止"
+  },
+  "Retry": {
+    "ko": "다시 시도",
+    "en": "Retry",
+    "ja": "再試行",
+    "zh": "重试"
+  },
+  "&Retry": {
+    "ko": "다시 시도",
+    "en": "Retry",
+    "ja": "再試行",
+    "zh": "重试"
+  },
+  "Ignore": {
+    "ko": "무시",
+    "en": "Ignore",
+    "ja": "無視",
+    "zh": "忽略"
+  },
+  "&Ignore": {
+    "ko": "무시",
+    "en": "Ignore",
+    "ja": "無視",
+    "zh": "忽略"
+  },
+  "Restore Defaults": {
+    "ko": "기본값 복원",
+    "en": "Restore Defaults",
+    "ja": "既定値に戻す",
+    "zh": "恢复默认值"
+  },
+  "&Restore Defaults": {
+    "ko": "기본값 복원",
+    "en": "Restore Defaults",
+    "ja": "既定値に戻す",
+    "zh": "恢复默认值"
+  }
+}

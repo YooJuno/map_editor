@@ -28,6 +28,7 @@ public:
     void openMaskPath(const QString &path, Mask::Kind kind);
 protected:
     void closeEvent(QCloseEvent *) override;
+    void changeEvent(QEvent *) override;
 private:
     QWidget *makeTools();
     QWidget *makeToolRail();
@@ -39,6 +40,7 @@ private:
     bool geometryPending() const;
     void updateCropFields(QRect area);
     void changeTheme(bool dark);
+    void changeLanguage(const QString &code);
     void refreshThemeIcons();
     QWidget *makeProperties();
     QWidget *makeLayers();
@@ -65,7 +67,10 @@ private:
     void openMask();
     void closeMasks();
     void clearMask();
-    bool hasMasks() const { return !keepout_.empty() || !speedMask_.empty(); }
+    static bool maskInUse(const Document &mask) { return !mask.empty() && (mask.dirty() || !mask.map().yamlPath.isEmpty()); }
+    bool hasMasks() const { return maskInUse(keepout_) || maskInUse(speedMask_); }
+    bool hasDirtyMasks() const { return keepout_.dirty() || speedMask_.dirty() || (activeLayer_ > 0 && canvas_->isEditing()); }
+    void detachCleanMasks();
     void checkSavePaths(Document *document, const QString &yamlPath);
     bool applyMetadata();
     void report(const std::exception &e);
@@ -91,10 +96,13 @@ private:
     QLabel *fileLabel_, *details_, *coordinates_, *zoomLabel_, *radLabel_, *paletteNote_, *metadataState_;
     QLabel *documentTitle_, *documentState_, *toolTitle_, *toolContext_;
     QPushButton *apply_, *revert_, *resetGray_;
-    QAction *saveAction_, *saveAsAction_, *undoAction_, *redoAction_;
+    QAction *saveAction_, *saveAsAction_, *saveAllAction_, *undoAction_, *redoAction_;
+    QToolButton *saveOptionsButton_;
     QAction *openAction_;
     QAction *darkThemeAction_, *lightThemeAction_;
     QToolButton *themeButton_;
+    QToolButton *languageButton_;
+    bool uiReady_ = false;
     QMenu *viewMenu_;
     QAction *rotateAction_, *normalizeAction_, *fitAction_, *actualAction_, *zoomInAction_, *zoomOutAction_;
     QToolBar *drawingRail_;

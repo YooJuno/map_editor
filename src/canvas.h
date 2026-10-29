@@ -46,6 +46,7 @@ signals:
     void fileDropped(const QString &path);
     void colorPicked(int gray);
     void editingChanged();
+    void paintRequested();
     void cropChanged(QRect area);
     void geometryApplyRequested();
     void previewCancelRequested();

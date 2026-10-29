@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "canvas.h"
 #include "icons.h"
 #include <QDragEnterEvent>
@@ -216,12 +217,12 @@ void Canvas::paintEvent(QPaintEvent *) {
         Icons::get(Icons::Map, QColor("#959daa")).paint(&p, QRect(width() / 2 - 26, center - 88, 52, 52));
         auto heading = font(); heading.setPointSizeF(16); heading.setWeight(QFont::Medium); p.setFont(heading);
         p.setPen(QColor("#e2e5ea"));
-        p.drawText(QRect(0, center - 12, width(), 34), Qt::AlignCenter, "지도를 열어 시작하세요");
+        p.drawText(QRect(0, center - 12, width(), 34), Qt::AlignCenter, I18n::text("지도를 열어 시작하세요"));
         auto body = font(); body.setPointSizeF(10); p.setFont(body); p.setPen(QColor("#a5abb6"));
-        p.drawText(QRect(0, center + 28, width(), 28), Qt::AlignCenter, "YAML 또는 PGM 파일을 여기에 끌어 놓으세요");
+        p.drawText(QRect(0, center + 28, width(), 28), Qt::AlignCenter, I18n::text("YAML 또는 PGM 파일을 여기에 끌어 놓으세요"));
         body.setPointSizeF(9); p.setFont(body); p.setPen(QColor("#838e9f"));
         p.drawText(QRect(0, center + 66, width(), 24), Qt::AlignCenter,
-            QKeySequence(QKeySequence::Open).toString(QKeySequence::NativeText) + "  ·  지도 열기");
+            QKeySequence(QKeySequence::Open).toString(QKeySequence::NativeText) + I18n::text("  ·  지도 열기"));
         return;
     }
     if (rotationPreview_) {
@@ -332,7 +333,7 @@ bool Canvas::insideImage(QPointF position) const {
     return point.x() >= 0 && point.y() >= 0 && point.x() < base_->image().width() && point.y() < base_->image().height();
 }
 void Canvas::mousePressEvent(QMouseEvent *e) {
-    setFocus(); if (doc_->empty()) return;
+    setFocus(); if (base_->empty()) return;
     mouse_ = e->position(); inside_ = true;
     if (e->button() == Qt::MiddleButton || (e->button() == Qt::LeftButton && (space_ || tool_ == Hand || rotationPreview_))) {
         panning_ = true; fitted_ = false; panStart_ = e->position(); setCursor(Qt::ClosedHandCursor); return;
@@ -352,9 +353,10 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     if (tool_ == Origin) { draggingOrigin_ = true; emit originPicked(mapPoint(e->position())); return; }
     if (tool_ == Picker) {
         const auto point = pixelPoint(e->position());
-        emit colorPicked(doc_->image().constScanLine(point.y())[point.x()]);
+        emit colorPicked(doc_->empty() ? 0 : doc_->image().constScanLine(point.y())[point.x()]);
         return;
     }
+    if (doc_->empty()) { emit paintRequested(); if (doc_->empty()) return; }
     if (tool_ == Polygon) {
         if (!drawing_) { drawing_ = true; draft_ = doc_->image().copy(); emit editingChanged(); }
         const auto point = mapPoint(e->position());
@@ -370,7 +372,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
     mouse_ = e->position(); inside_ = true;
-    if (doc_->empty()) return;
+    if (base_->empty()) return;
     if (!rotationPreview_) emit positionChanged(mapPoint(e->position()));
     if (panning_) { offset_ += e->position() - panStart_; panStart_ = e->position(); }
     else if (selectingCrop_) {
@@ -438,7 +440,7 @@ void Canvas::finishPolygon() {
 void Canvas::finishStroke() {
     if (!drawing_) return;
     drawing_ = false;
-    const QStringList names{"펜", "직선", "사각형", "영역 채우기", "이동", "스포이드", "다각형"};
+    const QStringList names{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("영역 채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형")};
     doc_->editImage(draft_, names[int(tool_)]); draft_ = {}; polygon_.clear(); emit editingChanged(); update();
 }
 void Canvas::cancelStroke() { drawing_ = panning_ = space_ = false; draft_ = {}; polygon_.clear(); emit editingChanged(); update(); }

@@ -7,7 +7,7 @@
 
 // Small, consistent outline icons rendered by Qt; no platform icon theme or SVG plugin required.
 namespace Icons {
-enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin, Moon, Sun };
+enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin, Moon, Sun, Globe };
 inline QIcon get(Name name, QColor color = {}) {
     if (!color.isValid()) color = QColor(Theme::isDark() ? "#c5cbd4" : "#535d6c");
     QIcon icon;
@@ -81,6 +81,9 @@ inline QIcon get(Name name, QColor color = {}) {
         case Origin:
             p.drawEllipse(QPointF(12, 12), 5, 5); path.moveTo(12, 2); path.lineTo(12, 8);
             path.moveTo(12, 16); path.lineTo(12, 22); path.moveTo(2, 12); path.lineTo(8, 12); path.moveTo(16, 12); path.lineTo(22, 12); break;
+        case Globe:
+            p.drawEllipse(QRectF(3, 3, 18, 18)); p.drawEllipse(QRectF(8, 3, 8, 18));
+            path.moveTo(3, 12); path.lineTo(21, 12); break;
         case Moon:
             path.moveTo(20, 15); path.cubicTo(8, 18, 5, 7, 10, 3); path.cubicTo(-2, 5, 3, 26, 16, 20); path.cubicTo(18, 19, 19, 17, 20, 15); break;
         case Sun:

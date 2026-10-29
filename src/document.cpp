@@ -1,3 +1,4 @@
+#include "i18n.h"
 #include "document.h"
 #include <QCryptographicHash>
 #include <QFile>
@@ -43,7 +44,7 @@ private:
 };
 class MetadataCommand : public QUndoCommand {
 public:
-    MetadataCommand(Document *d, const MapIO::Metadata &m) : QUndoCommand("지도 속성 변경"), doc(d), before(d->meta()), after(m) {}
+    MetadataCommand(Document *d, const MapIO::Metadata &m) : QUndoCommand(I18n::text("지도 속성 변경")), doc(d), before(d->meta()), after(m) {}
     void undo() override { doc->map_.meta = before; emit doc->changed(); }
     void redo() override { doc->map_.meta = after; emit doc->changed(); }
     bool geometry() const { return before.resolution != after.resolution || before.x != after.x || before.y != after.y || before.yaw != after.yaw; }
@@ -53,7 +54,7 @@ private:
 };
 class RotateCommand : public QUndoCommand {
 public:
-    RotateCommand(Document *d, QImage after, MapIO::Metadata meta, const QString &label = "이미지 회전") : QUndoCommand(label), doc(d),
+    RotateCommand(Document *d, QImage after, MapIO::Metadata meta, const QString &label = I18n::text("이미지 회전")) : QUndoCommand(label), doc(d),
         beforeSize(d->image().size()), afterSize(after.size()),
         before(pixels(d->image(), d->image().rect())), after(pixels(after, after.rect())),
         oldMeta(d->meta()), newMeta(meta) {}
@@ -86,7 +87,7 @@ void Document::replace(MapIO::Map loadedMap, bool needsSave) {
     const auto error = MapIO::validate(loadedMap.meta, allowRaw_);
     if (!error.isEmpty()) throw std::runtime_error(error.toUtf8().constData());
     if (loadedMap.image.isNull() || loadedMap.image.format() != QImage::Format_Grayscale8)
-        throw std::runtime_error("유효한 이미지가 없습니다.");
+        throw std::runtime_error(I18n::utf8("유효한 이미지가 없습니다."));
     undo_.clear();
     map_ = std::move(loadedMap);
     historyBytes_ = 0; historyBaselineDirty_ = false;
@@ -110,13 +111,13 @@ bool geometryCommand(const QUndoCommand *command) {
 bool Document::undoChangesGeometry() const { return undo_.canUndo() && geometryCommand(undo_.command(undo_.index() - 1)); }
 bool Document::redoChangesGeometry() const { return undo_.canRedo() && geometryCommand(undo_.command(undo_.index())); }
 void Document::newMap(int w, int h, double resolution) {
-    if (w <= 0 || h <= 0 || qint64(w) * h > MapIO::MaxPixels) throw std::runtime_error("지도 크기 제한을 초과했습니다.");
+    if (w <= 0 || h <= 0 || qint64(w) * h > MapIO::MaxPixels) throw std::runtime_error(I18n::utf8("지도 크기 제한을 초과했습니다."));
     MapIO::Map fresh;
     fresh.meta.resolution = resolution;
     const auto error = MapIO::validate(fresh.meta);
     if (!error.isEmpty()) throw std::runtime_error(error.toUtf8().constData());
     fresh.image = QImage(w, h, QImage::Format_Grayscale8);
-    if (fresh.image.isNull()) throw std::runtime_error("메모리 할당 실패");
+    if (fresh.image.isNull()) throw std::runtime_error(I18n::utf8("메모리 할당 실패"));
     fresh.image.fill(205);
     fresh.extra = YAML::Node(YAML::NodeType::Map);
     undo_.clear(); map_ = std::move(fresh); needsPair_ = true; historyBytes_ = 0; historyBaselineDirty_ = false;
@@ -150,9 +151,9 @@ void Document::rotateImage(double degrees) {
     const auto transform = QImage::trueMatrix(QTransform().rotate(degrees), image().width(), image().height());
     const QRect bounds = transform.mapRect(QRectF(0, 0, image().width(), image().height())).toAlignedRect();
     const QSize size = bounds.size();
-    if (qint64(size.width()) * size.height() > MapIO::MaxPixels) throw std::runtime_error("회전 후 지도 크기가 32 Mi 픽셀을 초과합니다.");
+    if (qint64(size.width()) * size.height() > MapIO::MaxPixels) throw std::runtime_error(I18n::utf8("회전 후 지도 크기가 32 Mi 픽셀을 초과합니다."));
     QImage result(size, QImage::Format_Grayscale8);
-    if (result.isNull()) throw std::runtime_error("회전 이미지 메모리 할당 실패");
+    if (result.isNull()) throw std::runtime_error(I18n::utf8("회전 이미지 메모리 할당 실패"));
     result.fill(MapIO::unknownGray(meta()));
     const auto inverse = transform.inverted();
     for (int y = 0; y < result.height(); ++y) for (int x = 0; x < result.width(); ++x) {
@@ -171,14 +172,14 @@ void Document::rotateImage(double degrees) {
 void Document::cropImage(const QRect &requested) {
     if (empty()) return;
     const auto area = requested.intersected(image().rect());
-    if (area.isEmpty()) throw std::runtime_error("남길 영역을 먼저 선택하세요.");
+    if (area.isEmpty()) throw std::runtime_error(I18n::utf8("남길 영역을 먼저 선택하세요."));
     if (area == image().rect()) return;
     auto result = image().copy(area);
-    if (result.isNull()) throw std::runtime_error("자르기 이미지 메모리 할당 실패");
+    if (result.isNull()) throw std::runtime_error(I18n::utf8("자르기 이미지 메모리 할당 실패"));
     auto updated = meta();
     const auto origin = MapIO::pixelToWorld(QPointF(area.x(), area.y() + area.height()), image().height(), meta());
     updated.x = origin.x(); updated.y = origin.y();
-    auto *command = new RotateCommand(this, result, updated, "지도 자르기");
+    auto *command = new RotateCommand(this, result, updated, I18n::text("지도 자르기"));
     push(command, command->byteSize());
 }
 QRect Document::knownBounds() const {
@@ -209,10 +210,10 @@ bool Document::diskMatches() const {
     return yamlHash_ == hashFile(map_.yamlPath) && imageHash_ == hashFile(map_.imagePath);
 }
 MapIO::SaveResult Document::save(const QString &newPath) {
-    if (empty()) throw std::runtime_error("열린 지도가 없습니다.");
+    if (empty()) throw std::runtime_error(I18n::utf8("열린 지도가 없습니다."));
     const auto path = newPath.isEmpty() ? map_.yamlPath : newPath;
     const bool same = !map_.yamlPath.isEmpty() && MapIO::sameFilePath(path, map_.yamlPath);
-    if (same && !diskMatches()) throw std::runtime_error("열어 둔 지도 파일이 외부에서 변경되었거나 삭제되었습니다. 다시 열거나 다른 이름으로 저장하세요.");
+    if (same && !diskMatches()) throw std::runtime_error(I18n::utf8("열어 둔 지도 파일이 외부에서 변경되었거나 삭제되었습니다. 다시 열거나 다른 이름으로 저장하세요."));
     if (same && !dirty()) return {map_.yamlPath, map_.imagePath, {}};
     auto saved = MapIO::savePair(map_, path, same ? map_.imagePath : QString(), allowRaw_);
     map_.yamlPath = saved.yamlPath; map_.imagePath = saved.imagePath; map_.hasYaml = true;
