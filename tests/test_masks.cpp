@@ -348,6 +348,22 @@ private slots:
         QVERIFY(mask->empty()); QCOMPARE(base->image().size(), QSize(24, 32));
         QVERIFY(QFile::exists(dir.filePath("speed.yaml"))); base->save(); window.close();
     }
+    void newMaskModeIsDrawableAfterClosingHiddenMasks() {
+        QTemporaryDir dir; const auto paths = MapIO::savePair(reference(), dir.filePath("base.yaml"));
+        const auto maskPaths = MapIO::savePair(Mask::create(reference(), Mask::Keepout), dir.filePath("mask.yaml"), {}, true);
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        window.openMaskPath(maskPaths.yamlPath, Mask::Keepout);
+        window.findChild<QCheckBox *>("keepoutVisible")->setChecked(false);
+        window.findChild<QSlider *>("maskOpacity")->setValue(0);
+        window.findChild<QPushButton *>("closeMasks")->click();
+        window.findChild<QPushButton *>("keepoutWorkspace")->click();
+        QVERIFY(window.activeDocument()->empty());
+        QVERIFY(window.findChild<QCheckBox *>("keepoutVisible")->isChecked());
+        QVERIFY(window.findChild<QSlider *>("maskOpacity")->value() > 0);
+        auto *tool = window.findChild<QPushButton *>("rectangleTool"); QVERIFY(tool->isEnabled()); tool->click();
+        rectangle(window.canvas(), {3.5, 3.5}, {10.5, 10.5}); QVERIFY(window.activeDocument()->dirty());
+        window.activeDocument()->save(dir.filePath("new-mask.yaml")); window.close();
+    }
 };
 QTEST_MAIN(MaskTest)
 #include "test_masks.moc"

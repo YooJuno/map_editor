@@ -888,6 +888,10 @@ void MainWindow::selectLayer(int index) {
         auto *target = index == 1 ? &keepout_ : index == 2 ? &speedMask_ : &doc_;
         const bool created = target->empty();
         // A tab selects an editing mode. Allocate a mask only on the first paint operation.
+        if (index > 0 && !maskInUse(*target)) {
+            (index == 1 ? keepoutVisible_ : speedVisible_)->setChecked(true);
+            if (opacity_->value() == 0) opacity_->setValue(45);
+        }
         if (activeLayer_ == 0) mapTool_ = currentTool_; else maskTool_ = currentTool_;
         if (created && index > 0) maskTool_ = Canvas::Polygon;
         if (index > 0) maskColors_->button(0)->setChecked(true);
