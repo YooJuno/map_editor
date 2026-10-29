@@ -2,6 +2,7 @@
 #include "document.h"
 #include <QWidget>
 #include <QPolygonF>
+#include <QTransform>
 
 namespace Raster {
 void stroke(QImage &image, QPoint from, QPoint to, int diameter, int gray);
@@ -12,12 +13,11 @@ void polygon(QImage &image, const QPolygonF &points, int gray);
 class Canvas : public QWidget {
     Q_OBJECT
 public:
-    enum Tool { Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon };
+    enum Tool { Pen, Line, Rectangle, Fill, Hand, Picker, Polygon, Crop, Origin };
     explicit Canvas(Document *document, QWidget *parent = nullptr);
     void setTool(Tool tool);
     void setBrushSize(int size) { brushSize_ = size; update(); }
     void setGray(int gray) { gray_ = gray; update(); }
-    void setEraserGray(int gray) { eraserGray_ = gray; }
     void setFilled(bool filled) { filled_ = filled; }
     void finishEditing();
     bool undoPolygonPoint();
@@ -30,6 +30,13 @@ public:
     void zoom(double factor);
     double scale() const { return scale_; }
     bool isEditing() const { return drawing_; }
+    void setRotationPreview(double degrees);
+    void clearRotationPreview();
+    bool rotationPreview() const { return rotationPreview_; }
+    void setCropSelection(QRect area);
+    QRect cropSelection() const { return cropSelection_; }
+    void setOriginPreview(const MapIO::Metadata &meta) { originPreview_ = true; originMeta_ = meta; update(); }
+    void clearOriginPreview() { originPreview_ = false; update(); }
     void setAxes(bool visible) { axes_ = visible; update(); }
     QPointF mapPoint(QPointF pos) const { return (pos - offset_) / scale_; }
     QPointF screenPoint(QPointF pos) const { return offset_ + pos * scale_; }
@@ -39,6 +46,10 @@ signals:
     void fileDropped(const QString &path);
     void colorPicked(int gray);
     void editingChanged();
+    void cropChanged(QRect area);
+    void geometryApplyRequested();
+    void previewCancelRequested();
+    void originPicked(QPointF pixel);
 protected:
     void paintEvent(QPaintEvent *) override;
     void resizeEvent(QResizeEvent *) override;
@@ -56,12 +67,13 @@ protected:
 private:
     QPoint pixelPoint(QPointF pos) const;
     bool insideImage(QPointF position) const;
-    int activeGray() const { return tool_ == Eraser ? eraserGray_ : gray_; }
+    int activeGray() const { return gray_; }
     void zoomAt(double factor, QPointF anchor);
     void finishStroke();
     void cancelStroke();
     void finishPolygon();
     bool editableVisible() const;
+    QSize displaySize() const;
     Document *doc_;
     Document *base_;
     Document *keepout_ = nullptr, *speed_ = nullptr;
@@ -70,11 +82,21 @@ private:
     QPolygonF polygon_;
     QPointF polygonHover_;
     Tool tool_ = Pen;
-    int brushSize_ = 8, gray_ = 0, eraserGray_ = 205;
+    int brushSize_ = 8, gray_ = 0;
     double scale_ = 1;
     QPointF offset_, panStart_, mouse_;
     QPoint start_, last_;
     bool drawing_ = false, panning_ = false, space_ = false, inside_ = false, axes_ = true, filled_ = false;
     bool fitted_ = true;
     QImage draft_;
+    bool rotationPreview_ = false, selectingCrop_ = false;
+    QTransform previewTransform_;
+    QSize previewSize_;
+    QRect cropSelection_;
+    QPoint cropStart_;
+    QRect cropBeforeDrag_;
+    bool movingCrop_ = false, resizingCrop_ = false;
+    QPointF cropResizeAnchor_;
+    bool originPreview_ = false, draggingOrigin_ = false;
+    MapIO::Metadata originMeta_;
 };

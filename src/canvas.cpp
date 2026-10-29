@@ -8,6 +8,7 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QResizeEvent>
 #include <QWheelEvent>
 #include <cmath>
@@ -120,7 +121,7 @@ Canvas::Canvas(Document *doc, QWidget *parent) : QWidget(parent), doc_(doc), bas
     connect(doc, &Document::loaded, this, [this] { cancelStroke(); fit(); });
     connect(doc, &Document::changed, this, qOverload<>(&Canvas::update));
 }
-void Canvas::setTool(Tool tool) { finishEditing(); tool_ = tool; setCursor(tool == Hand ? Qt::OpenHandCursor : Qt::CrossCursor); update(); }
+void Canvas::setTool(Tool tool) { finishEditing(); selectingCrop_ = draggingOrigin_ = false; tool_ = tool; setCursor(tool == Hand ? Qt::OpenHandCursor : Qt::CrossCursor); update(); }
 void Canvas::setDocument(Document *document) { finishEditing(); doc_ = document ? document : base_; update(); }
 void Canvas::setMaskLayers(Document *keepout, Document *speed) {
     keepout_ = keepout; speed_ = speed;
@@ -130,6 +131,23 @@ bool Canvas::editableVisible() const {
     return (doc_ == base_ || maskOpacity_ > 0) && (doc_ != keepout_ || showKeepout_) && (doc_ != speed_ || showSpeed_);
 }
 void Canvas::finishEditing() { if (tool_ == Polygon && drawing_) finishPolygon(); else finishStroke(); }
+QSize Canvas::displaySize() const { return rotationPreview_ ? previewSize_ : base_->image().size(); }
+void Canvas::setRotationPreview(double degrees) {
+    if (base_->empty()) return;
+    finishEditing(); rotationPreview_ = true;
+    previewTransform_ = QImage::trueMatrix(QTransform().rotate(degrees), base_->image().width(), base_->image().height());
+    previewSize_ = previewTransform_.mapRect(QRectF(QPointF(), QSizeF(base_->image().size()))).toAlignedRect().size();
+    fit();
+}
+void Canvas::clearRotationPreview() {
+    if (!rotationPreview_) return;
+    rotationPreview_ = false; fit();
+}
+void Canvas::setCropSelection(QRect area) {
+    const auto clipped = area.intersected(base_->image().rect());
+    if (clipped == cropSelection_) return;
+    cropSelection_ = clipped; emit cropChanged(cropSelection_); update();
+}
 bool Canvas::undoPolygonPoint() {
     if (tool_ != Polygon || !drawing_ || polygon_.isEmpty()) return false;
     polygon_.removeLast();
@@ -140,8 +158,9 @@ bool Canvas::undoPolygonPoint() {
 void Canvas::fit() {
     if (base_->empty()) return;
     fitted_ = true;
-    scale_ = qBound(0.005, qMin((width() - 96.) / base_->image().width(), (height() - 96.) / base_->image().height()), 64.);
-    offset_ = QPointF((width() - base_->image().width() * scale_) / 2, (height() - base_->image().height() * scale_) / 2);
+    const auto size = displaySize();
+    scale_ = qBound(0.005, qMin((width() - 96.) / size.width(), (height() - 96.) / size.height()), 64.);
+    offset_ = QPointF((width() - size.width() * scale_) / 2, (height() - size.height() * scale_) / 2);
     emit zoomChanged(scale_); update();
 }
 void Canvas::actualSize() { if (!base_->empty()) zoomAt(1. / scale_, QPointF(width() / 2., height() / 2.)); }
@@ -156,7 +175,7 @@ void Canvas::zoomAt(double factor, QPointF anchor) {
 }
 void Canvas::paintEvent(QPaintEvent *) {
     QPainter p(this);
-    p.fillRect(rect(), QColor("#303531"));
+    p.fillRect(rect(), QColor("#171e22"));
     if (base_->empty()) {
         const int center = height() / 2;
         Icons::get(Icons::Map, QColor("#8b9c88")).paint(&p, QRect(width() / 2 - 26, center - 88, 52, 52));
@@ -168,6 +187,16 @@ void Canvas::paintEvent(QPaintEvent *) {
         body.setPointSizeF(9); p.setFont(body); p.setPen(QColor("#788872"));
         p.drawText(QRect(0, center + 66, width(), 24), Qt::AlignCenter,
             QKeySequence(QKeySequence::Open).toString(QKeySequence::NativeText) + "  ·  지도 열기");
+        return;
+    }
+    if (rotationPreview_) {
+        const QRectF target(offset_, QSizeF(previewSize_) * scale_);
+        const auto gray = MapIO::unknownGray(base_->meta()); p.fillRect(target, QColor(gray, gray, gray));
+        p.save(); p.translate(offset_); p.scale(scale_, scale_); p.setTransform(previewTransform_, true);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, false); p.drawImage(QPointF(), base_->image()); p.restore();
+        p.setPen(QPen(QColor(120, 153, 139, 150), 1, Qt::DashLine));
+        p.drawLine(QPointF(target.center().x(), target.top()), QPointF(target.center().x(), target.bottom()));
+        p.drawLine(QPointF(target.left(), target.center().y()), QPointF(target.right(), target.center().y()));
         return;
     }
     const auto &image = drawing_ && doc_ == base_ ? draft_ : base_->image();
@@ -187,7 +216,7 @@ void Canvas::paintEvent(QPaintEvent *) {
     };
     overlay(speed_, showSpeed_, true);
     overlay(keepout_, showKeepout_, false);
-    p.setPen(QColor("#2e3033")); p.drawRect(target);
+    p.setPen(QColor("#0f1518")); p.drawRect(target);
     if (scale_ >= 10) {
         p.save(); p.setClipRect(target);
         p.setPen(QColor(0, 0, 0, 32));
@@ -197,18 +226,29 @@ void Canvas::paintEvent(QPaintEvent *) {
         for (int y = y0; y <= y1; ++y) p.drawLine(QPointF(target.left(), offset_.y() + y * scale_), QPointF(target.right(), offset_.y() + y * scale_));
         p.restore();
     }
-    if (axes_) {
-        const auto origin = screenPoint(QPointF(0, image.height()));
-        if (rect().adjusted(-80, -80, 80, 80).contains(origin.toPoint())) {
+    if (axes_ || tool_ == Origin) {
+        const auto &axesMeta = originPreview_ ? originMeta_ : base_->meta();
+        const auto origin = screenPoint(MapIO::worldToPixel(QPointF(0, 0), image.height(), axesMeta));
+        if (QRectF(rect()).adjusted(-80, -80, 80, 80).contains(origin)) {
             p.setRenderHint(QPainter::Antialiasing, true);
-            const double yaw = base_->meta().yaw, len = 52;
+            const double yaw = axesMeta.yaw, len = 52;
             auto arrow = [&](QPointF end, const QColor &color, const QString &label) {
                 p.setPen(QPen(color, 2)); p.drawLine(origin, end); p.setBrush(color); p.drawEllipse(end, 3, 3); p.drawText(end + QPointF(5, -5), label);
             };
             arrow(origin + QPointF(std::cos(yaw), std::sin(yaw)) * len, QColor("#cc564d"), "X");
             arrow(origin + QPointF(std::sin(yaw), -std::cos(yaw)) * len, QColor("#24865f"), "Y");
-            p.setPen(QPen(QColor("#176b50"), 2)); p.setBrush(Qt::white); p.drawEllipse(origin, 4, 4);
+            p.setPen(QPen(QColor("#80ab96"), 2)); p.setBrush(Qt::white); p.drawEllipse(origin, 4, 4);
+            if (tool_ == Origin) { p.setPen(QColor("#537d68")); p.drawText(origin + QPointF(9, 18), "0, 0"); }
         }
+    }
+    if (tool_ == Crop && !cropSelection_.isEmpty()) {
+        const QRectF selection(screenPoint(QPointF(cropSelection_.topLeft())), QSizeF(cropSelection_.size()) * scale_);
+        QPainterPath shade; shade.addRect(target); shade.addRect(selection);
+        p.fillPath(shade, QColor(0, 0, 0, 155));
+        p.setPen(QPen(QColor("#b9d5c4"), 1.5, Qt::DashLine)); p.setBrush(Qt::NoBrush); p.drawRect(selection);
+        p.setPen(Qt::NoPen); p.setBrush(QColor("#dcece1"));
+        for (const auto corner : {selection.topLeft(), selection.topRight(), selection.bottomLeft(), selection.bottomRight()})
+            p.drawRect(QRectF(corner - QPointF(3, 3), QSizeF(6, 6)));
     }
     if (tool_ == Polygon && drawing_ && !polygon_.isEmpty()) {
         p.save(); p.translate(offset_); p.scale(scale_, scale_);
@@ -221,7 +261,7 @@ void Canvas::paintEvent(QPaintEvent *) {
         for (const auto &point : polygon_) p.drawEllipse(point, 3. / scale_, 3. / scale_);
         p.restore();
     }
-    if (inside_ && !panning_ && (tool_ == Pen || tool_ == Eraser) && insideImage(mouse_)) {
+    if (inside_ && !panning_ && tool_ == Pen && insideImage(mouse_)) {
         p.setRenderHint(QPainter::Antialiasing, true);
         const double r = qMax(2., brushSize_ * scale_ / 2.);
         const auto point = pixelPoint(mouse_);
@@ -255,10 +295,25 @@ bool Canvas::insideImage(QPointF position) const {
 void Canvas::mousePressEvent(QMouseEvent *e) {
     setFocus(); if (doc_->empty()) return;
     mouse_ = e->position(); inside_ = true;
-    if (e->button() == Qt::MiddleButton || (e->button() == Qt::LeftButton && (space_ || tool_ == Hand))) {
+    if (e->button() == Qt::MiddleButton || (e->button() == Qt::LeftButton && (space_ || tool_ == Hand || rotationPreview_))) {
         panning_ = true; fitted_ = false; panStart_ = e->position(); setCursor(Qt::ClosedHandCursor); return;
     }
-    if (e->button() != Qt::LeftButton || !insideImage(e->position()) || !editableVisible()) return;
+    if (e->button() != Qt::LeftButton || !editableVisible()) return;
+    if (tool_ == Crop) {
+        cropStart_ = pixelPoint(e->position()); selectingCrop_ = true; movingCrop_ = resizingCrop_ = false; cropBeforeDrag_ = cropSelection_;
+        if (!cropSelection_.isEmpty()) {
+            const QRectF area(cropSelection_);
+            const QPointF corners[]{area.topLeft(), area.topRight(), area.bottomRight(), area.bottomLeft()};
+            for (int i = 0; i < 4; ++i) if (QLineF(screenPoint(QPointF(corners[i])), e->position()).length() <= 9) {
+                cropResizeAnchor_ = corners[(i + 2) % 4]; resizingCrop_ = true; return;
+            }
+            if (cropSelection_ != base_->image().rect() && cropSelection_.contains(cropStart_)) { movingCrop_ = true; return; }
+        }
+        if (!insideImage(e->position())) { selectingCrop_ = false; return; }
+        setCropSelection(QRect(cropStart_, cropStart_)); return;
+    }
+    if (!insideImage(e->position())) return;
+    if (tool_ == Origin) { draggingOrigin_ = true; emit originPicked(mapPoint(e->position())); return; }
     if (tool_ == Picker) {
         const auto point = pixelPoint(e->position());
         emit colorPicked(doc_->image().constScanLine(point.y())[point.x()]);
@@ -274,14 +329,32 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     drawing_ = true; start_ = last_ = pixelPoint(e->position()); draft_ = doc_->image().copy();
     emit editingChanged();
     if (tool_ == Fill) { Raster::flood(draft_, start_, activeGray()); finishStroke(); }
-    else if (tool_ == Pen || tool_ == Eraser) Raster::stroke(draft_, start_, start_, brushSize_, activeGray());
+    else if (tool_ == Pen) Raster::stroke(draft_, start_, start_, brushSize_, activeGray());
     update();
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
     mouse_ = e->position(); inside_ = true;
     if (doc_->empty()) return;
-    emit positionChanged(mapPoint(e->position()));
+    if (!rotationPreview_) emit positionChanged(mapPoint(e->position()));
     if (panning_) { offset_ += e->position() - panStart_; panStart_ = e->position(); }
+    else if (selectingCrop_) {
+        auto point = pixelPoint(e->position());
+        point.setX(qBound(0, point.x(), base_->image().width() - 1));
+        point.setY(qBound(0, point.y(), base_->image().height() - 1));
+        if (resizingCrop_) {
+            const auto area = QRectF(cropResizeAnchor_, mapPoint(e->position())).normalized().toAlignedRect().intersected(base_->image().rect());
+            if (!area.isEmpty()) setCropSelection(area);
+        } else if (movingCrop_) {
+            const auto delta = point - cropStart_;
+            const int x = qBound(0, cropBeforeDrag_.x() + delta.x(), base_->image().width() - cropBeforeDrag_.width());
+            const int y = qBound(0, cropBeforeDrag_.y() + delta.y(), base_->image().height() - cropBeforeDrag_.height());
+            setCropSelection(QRect(QPoint(x, y), cropBeforeDrag_.size()));
+        } else setCropSelection(QRect(cropStart_, point).normalized());
+    }
+    else if (draggingOrigin_) {
+        auto point = mapPoint(e->position()); point.setX(qBound(0., point.x(), double(base_->image().width()))); point.setY(qBound(0., point.y(), double(base_->image().height())));
+        emit originPicked(point);
+    }
     else if (drawing_ && tool_ == Polygon) {
         polygonHover_ = mapPoint(e->position());
         draft_ = doc_->image().copy();
@@ -289,7 +362,7 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         Raster::polygon(draft_, preview, activeGray());
     } else if (drawing_) {
         const auto current = pixelPoint(e->position());
-        if (tool_ == Pen || tool_ == Eraser) Raster::stroke(draft_, last_, current, brushSize_, activeGray());
+        if (tool_ == Pen) Raster::stroke(draft_, last_, current, brushSize_, activeGray());
         else {
             draft_ = doc_->image().copy();
             if (tool_ == Line) Raster::stroke(draft_, start_, current, brushSize_, activeGray());
@@ -297,9 +370,20 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         }
         last_ = current;
     }
+    if (tool_ == Crop && !selectingCrop_) {
+        auto cursor = Qt::CrossCursor;
+        if (cropSelection_ != base_->image().rect() && cropSelection_.contains(pixelPoint(e->position()))) cursor = Qt::SizeAllCursor;
+        const QRectF area(cropSelection_);
+        const QPointF corners[]{area.topLeft(), area.topRight(), area.bottomRight(), area.bottomLeft()};
+        for (int i = 0; i < 4 && !cropSelection_.isEmpty(); ++i)
+            if (QLineF(screenPoint(QPointF(corners[i])), e->position()).length() <= 9) cursor = i % 2 ? Qt::SizeBDiagCursor : Qt::SizeFDiagCursor;
+        setCursor(cursor);
+    }
     update();
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
+    if (e->button() == Qt::LeftButton && draggingOrigin_) { mouseMoveEvent(e); draggingOrigin_ = false; return; }
+    if (e->button() == Qt::LeftButton && selectingCrop_) { mouseMoveEvent(e); selectingCrop_ = false; return; }
     if (panning_ && (e->button() == Qt::MiddleButton || e->button() == Qt::LeftButton)) {
         panning_ = false; setCursor(tool_ == Hand || space_ ? Qt::OpenHandCursor : Qt::CrossCursor);
     }
@@ -318,13 +402,16 @@ void Canvas::finishPolygon() {
 void Canvas::finishStroke() {
     if (!drawing_) return;
     drawing_ = false;
-    const QStringList names{"펜", "지우개", "직선", "사각형", "영역 채우기", "이동", "스포이드", "다각형"};
+    const QStringList names{"펜", "직선", "사각형", "영역 채우기", "이동", "스포이드", "다각형"};
     doc_->editImage(draft_, names[int(tool_)]); draft_ = {}; polygon_.clear(); emit editingChanged(); update();
 }
 void Canvas::cancelStroke() { drawing_ = panning_ = space_ = false; draft_ = {}; polygon_.clear(); emit editingChanged(); update(); }
 void Canvas::wheelEvent(QWheelEvent *e) { zoomAt(std::pow(1.0015, e->angleDelta().y()), e->position()); e->accept(); }
 void Canvas::keyPressEvent(QKeyEvent *e) {
-    if (tool_ == Polygon && drawing_ && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) { finishPolygon(); e->accept(); }
+    if ((tool_ == Crop || tool_ == Origin || rotationPreview_) && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) { emit geometryApplyRequested(); e->accept(); }
+    else if ((rotationPreview_ || tool_ == Origin) && e->key() == Qt::Key_Escape) { emit previewCancelRequested(); e->accept(); }
+    else if (tool_ == Crop && e->key() == Qt::Key_Escape) { selectingCrop_ = false; setCropSelection({}); e->accept(); }
+    else if (tool_ == Polygon && drawing_ && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) { finishPolygon(); e->accept(); }
     else if (tool_ == Polygon && drawing_ && e->key() == Qt::Key_Backspace) {
         undoPolygonPoint();
         e->accept();

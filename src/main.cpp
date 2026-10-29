@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "theme.h"
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFile>
@@ -12,7 +13,7 @@ int main(int argc, char **argv) {
     QCoreApplication::setOrganizationName("Mapwright"); QCoreApplication::setApplicationName("Mapwright"); QCoreApplication::setApplicationVersion(MAPWRIGHT_VERSION);
     QGuiApplication::setApplicationDisplayName("Map Editor");
     app.setStyle("Fusion");
-    app.setPalette(app.style()->standardPalette());
+    app.setPalette(Theme::darkPalette());
     const auto families = QFontDatabase::families();
     for (const auto &family : {QString("Noto Sans CJK KR"), QString("Malgun Gothic"), QString("Apple SD Gothic Neo"), QString("Noto Sans")}) {
         if (families.contains(family)) { app.setFont(QFont(family, 10)); break; }

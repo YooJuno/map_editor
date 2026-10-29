@@ -53,7 +53,7 @@ private:
 };
 class RotateCommand : public QUndoCommand {
 public:
-    RotateCommand(Document *d, QImage after, MapIO::Metadata meta) : QUndoCommand("이미지 회전"), doc(d),
+    RotateCommand(Document *d, QImage after, MapIO::Metadata meta, const QString &label = "이미지 회전") : QUndoCommand(label), doc(d),
         beforeSize(d->image().size()), afterSize(after.size()),
         before(pixels(d->image(), d->image().rect())), after(pixels(after, after.rect())),
         oldMeta(d->meta()), newMeta(meta) {}
@@ -167,6 +167,32 @@ void Document::rotateImage(double degrees) {
     updated.yaw += degrees * std::acos(-1.0) / 180;
     auto *command = new RotateCommand(this, result, updated);
     push(command, command->byteSize());
+}
+void Document::cropImage(const QRect &requested) {
+    if (empty()) return;
+    const auto area = requested.intersected(image().rect());
+    if (area.isEmpty()) throw std::runtime_error("남길 영역을 먼저 선택하세요.");
+    if (area == image().rect()) return;
+    auto result = image().copy(area);
+    if (result.isNull()) throw std::runtime_error("자르기 이미지 메모리 할당 실패");
+    auto updated = meta();
+    const auto origin = MapIO::pixelToWorld(QPointF(area.x(), area.y() + area.height()), image().height(), meta());
+    updated.x = origin.x(); updated.y = origin.y();
+    auto *command = new RotateCommand(this, result, updated, "지도 자르기");
+    push(command, command->byteSize());
+}
+QRect Document::knownBounds() const {
+    int left = image().width(), top = image().height(), right = -1, bottom = -1;
+    for (int y = 0; y < image().height(); ++y) {
+        const auto *row = image().constScanLine(y);
+        for (int x = 0; x < image().width(); ++x) {
+            const auto value = MapIO::probability(row[x], meta());
+            if (value < meta().free || value > meta().occupied) {
+                left = qMin(left, x); right = qMax(right, x); top = qMin(top, y); bottom = y;
+            }
+        }
+    }
+    return right < left ? QRect() : QRect(QPoint(left, top), QPoint(right, bottom));
 }
 void Document::push(QUndoCommand *command, qsizetype bytes) {
     // Account conservatively, including discarded redo branches, to stay bounded.

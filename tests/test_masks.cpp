@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "mask.h"
+#include "theme.h"
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
@@ -34,7 +35,7 @@ class MaskTest : public QObject {
     static QByteArray read(const QString &path) { QFile f(path); if (!f.open(QIODevice::ReadOnly)) return {}; return f.readAll(); }
 private slots:
     void initTestCase() {
-        qApp->setStyle("Fusion"); qApp->setPalette(qApp->style()->standardPalette());
+        qApp->setStyle("Fusion"); qApp->setPalette(Theme::darkPalette());
         if (!qEnvironmentVariable("MAPEDITOR_PREVIEW_DIR").isEmpty()) qApp->setFont(QFont("Noto Sans CJK KR", 10));
         QFile style(":/style.qss"); if (style.open(QIODevice::ReadOnly)) qApp->setStyleSheet(QString::fromUtf8(style.readAll()));
     }
@@ -178,6 +179,88 @@ private slots:
         QTimer::singleShot(0, [] { if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) box->button(QMessageBox::Cancel)->click(); });
         QVERIFY(!window.close()); QVERIFY(window.isVisible()); QVERIFY(mask->dirty());
         mask->save(dir.filePath("mask.yaml")); QVERIFY(window.close());
+    }
+    void cropPreservesWorldCoordinatesAndUndo() {
+        for (const double yaw : {0., .73, -1.4}) {
+            auto map = reference(); map.meta.yaw = yaw;
+            for (int y = 0; y < map.image.height(); ++y) for (int x = 0; x < map.image.width(); ++x) map.image.scanLine(y)[x] = uchar((x + 7 * y) % 256);
+            Document doc; doc.replace(map, false); const QRect area(4, 3, 19, 14);
+            doc.cropImage(area); QCOMPARE(doc.image(), map.image.copy(area)); QCOMPARE(doc.meta().yaw, map.meta.yaw);
+            for (auto point : {QPointF(.5, .5), QPointF(8.5, 9.5), QPointF(18.5, 13.5)})
+                QVERIFY(QLineF(MapIO::pixelToWorld(point + QPointF(area.topLeft()), map.image.height(), map.meta), MapIO::pixelToWorld(point, doc.image().height(), doc.meta())).length() < 1e-10);
+            QVERIFY(doc.undoChangesGeometry()); const auto afterMeta = doc.meta();
+            doc.undo()->undo(); QCOMPARE(doc.image(), map.image); QVERIFY(doc.meta() == map.meta); QVERIFY(!doc.dirty());
+            doc.undo()->redo(); QCOMPARE(doc.image(), map.image.copy(area)); QVERIFY(doc.meta() == afterMeta);
+        }
+    }
+    void automaticCropOnlyRemovesUnknownMargins() {
+        auto map = reference(); map.image.fill(205); Document doc; doc.replace(map, false);
+        QVERIFY(doc.knownBounds().isEmpty());
+        map.image.scanLine(5)[7] = 0; map.image.scanLine(16)[24] = 255; doc.replace(map, false);
+        QCOMPARE(doc.knownBounds(), QRect(7, 5, 18, 12));
+        map.meta.negate = 1; map.image.fill(MapIO::unknownGray(map.meta)); map.image.scanLine(5)[7] = 0; map.image.scanLine(16)[24] = 255;
+        doc.replace(map, false); QCOMPARE(doc.knownBounds(), QRect(7, 5, 18, 12));
+        doc.cropImage(map.image.rect()); QVERIFY(!doc.dirty());
+        QVERIFY(throws([&] { doc.cropImage(QRect(100, 100, 5, 5)); }));
+    }
+    void guiRotationIsPreviewUntilApplied() {
+        QTemporaryDir dir; auto paths = MapIO::savePair(reference(), dir.filePath("rotate.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        auto *doc = window.activeDocument(); const auto original = doc->image().copy(); const auto meta = doc->meta();
+        window.findChild<QPushButton *>("rotateWorkspace")->click();
+        auto *slider = window.findChild<QSlider *>("rotationSlider"); auto *angle = window.findChild<QDoubleSpinBox *>("rotationAngle");
+        slider->setValue(173); QCOMPARE(angle->value(), 17.3); QVERIFY(window.canvas()->rotationPreview());
+        window.findChild<QPushButton *>("rotateWorkspace")->click(); QCOMPARE(angle->value(), 17.3);
+        QCOMPARE(doc->image(), original); QVERIFY(!doc->dirty());
+        angle->setValue(-12.345); QCOMPARE(slider->value(), -123);
+        window.findChild<QPushButton *>("resetGeometry")->click(); QCOMPARE(angle->value(), 0.); QVERIFY(!doc->dirty());
+        angle->setValue(90); window.findChild<QPushButton *>("applyGeometry")->click();
+        QCOMPARE(doc->image().size(), QSize(24, 32)); QVERIFY(doc->dirty()); QCOMPARE(angle->value(), 0.);
+        window.findChild<QAction *>("undoAction")->trigger(); QCOMPARE(doc->image(), original); QVERIFY(doc->meta() == meta);
+        angle->setValue(90); window.findChild<QAction *>("saveAction")->trigger();
+        QCOMPARE(MapIO::load(paths.yamlPath).image.size(), QSize(24, 32)); QVERIFY(!doc->dirty());
+        window.close();
+    }
+    void guiCropAndLeftMaskNavigation() {
+        QTemporaryDir dir; auto paths = MapIO::savePair(reference(), dir.filePath("crop.yaml"));
+        MainWindow window; window.resize(1060, 700); window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        auto *doc = window.activeDocument(); window.findChild<QPushButton *>("cropWorkspace")->click();
+        auto *canvas = window.canvas(); canvas->fit(); rectangle(canvas, {3.5, 2.5}, {24.5, 18.5});
+        QCOMPARE(canvas->cropSelection(), QRect(3, 2, 22, 17)); QVERIFY(!doc->dirty());
+        QCOMPARE(window.findChild<QSpinBox *>("cropWidth")->value(), 22);
+        QTest::keyClick(canvas, Qt::Key_Return); QCOMPARE(doc->image().size(), QSize(22, 17));
+        doc->save(); window.findChild<QPushButton *>("keepoutWorkspace")->click();
+        auto *mask = window.activeDocument(); QVERIFY(mask != doc); QCOMPARE(mask->image().size(), doc->image().size());
+        QVERIFY(!window.findChild<QPushButton *>("cropWorkspace")->isEnabled());
+        QVERIFY(!window.findChild<QPushButton *>("rotateWorkspace")->isEnabled());
+        window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(canvas, {2.5, 2.5}, {10.5, 8.5});
+        QCOMPARE(int(mask->image().constScanLine(4)[5]), 100);
+        window.findChild<QPushButton *>("clearZone")->click(); rectangle(canvas, {2.5, 2.5}, {10.5, 8.5});
+        QCOMPARE(int(mask->image().constScanLine(4)[5]), 0);
+        mask->save(dir.filePath("mask.yaml")); window.close();
+    }
+    void guiOriginPickingUpdatesOnlyMetadata() {
+        QTemporaryDir dir; auto paths = MapIO::savePair(reference(), dir.filePath("origin.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        auto *doc = window.activeDocument(); const auto original = doc->image().copy(); const auto originalMeta = doc->meta();
+        window.findChild<QPushButton *>("originWorkspace")->click(); auto *canvas = window.canvas(); canvas->fit();
+        const auto point = canvas->screenPoint({10.5, 8.5}).toPoint(); const auto pixel = canvas->mapPoint(point);
+        QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, point); QVERIFY(!doc->dirty());
+        window.findChild<QPushButton *>("applyMetadata")->click();
+        QVERIFY(QLineF(MapIO::pixelToWorld(pixel, doc->image().height(), doc->meta()), QPointF(0, 0)).length() < 1e-6);
+        QCOMPARE(doc->image(), original); QVERIFY(doc->dirty());
+        window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(doc->meta() == originalMeta); QCOMPARE(doc->image(), original);
+        window.close();
+    }
+    void cropHandlesResizeAndMoveWithoutEditingPixels() {
+        Document doc; doc.replace(reference(), false); Canvas canvas(&doc); canvas.resize(800, 600); canvas.show(); QCoreApplication::processEvents(); canvas.fit();
+        canvas.setTool(Canvas::Crop); canvas.setCropSelection(QRect(4, 3, 16, 12));
+        rectangle(&canvas, {4, 3}, {2, 1});
+        QCOMPARE(canvas.cropSelection(), QRect(2, 1, 18, 14)); QVERIFY(!doc.dirty());
+        rectangle(&canvas, {8, 7}, {11, 9}); QCOMPARE(canvas.cropSelection(), QRect(5, 3, 18, 14));
+        canvas.setCropSelection(doc.image().rect());
+        rectangle(&canvas, {32, 24}, {25, 18}); QCOMPARE(canvas.cropSelection(), QRect(0, 0, 25, 18));
+        QVERIFY(!doc.dirty());
     }
 };
 QTEST_MAIN(MaskTest)

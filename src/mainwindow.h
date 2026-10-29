@@ -14,6 +14,7 @@ class QCheckBox;
 class QDockWidget;
 class QMenu;
 class QSlider;
+class QToolBar;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -29,6 +30,13 @@ protected:
 private:
     QWidget *makeTools();
     QWidget *makeToolRail();
+    QWidget *makeNavigation();
+    QWidget *makeGeometry();
+    void selectWorkspace(int mode);
+    void resetGeometry();
+    bool applyGeometry();
+    bool geometryPending() const;
+    void updateCropFields(QRect area);
     QWidget *makeProperties();
     QWidget *makeLayers();
     void makeActions();
@@ -63,15 +71,15 @@ private:
     Document doc_;
     Document keepout_, speedMask_;
     Canvas *canvas_;
-    QButtonGroup *tools_;
-    QButtonGroup *colors_;
-    QComboBox *eraser_, *negate_;
+    QButtonGroup *tools_, *workspaces_;
+    QButtonGroup *colors_, *maskColors_;
+    QComboBox *negate_;
     QDoubleSpinBox *resolution_, *x_, *y_, *yaw_, *free_, *occupied_;
     QSpinBox *size_;
     QCheckBox *filled_;
     QDockWidget *propertiesDock_;
     QWidget *toolPanel_, *toolRail_, *propertiesPanel_;
-    QWidget *baseProperties_, *maskProperties_, *colorPanel_, *eraserPanel_, *brushPanel_, *layersPanel_;
+    QWidget *baseProperties_, *maskProperties_, *colorPanel_, *maskColorPanel_, *brushPanel_, *layersPanel_;
     QComboBox *layer_;
     QSpinBox *speedPercent_;
     QSlider *opacity_;
@@ -85,13 +93,22 @@ private:
     QAction *newAction_, *openAction_;
     QMenu *viewMenu_;
     QAction *rotateAction_, *normalizeAction_, *fitAction_, *actualAction_, *zoomInAction_, *zoomOutAction_;
+    QToolBar *drawingRail_;
+    QWidget *geometryPanel_, *rotationPanel_, *cropPanel_, *paintColorPanel_;
+    QDoubleSpinBox *rotationAngle_;
+    QSlider *rotationSlider_;
+    QSpinBox *cropX_, *cropY_, *cropWidth_, *cropHeight_;
+    QPushButton *applyGeometry_, *resetGeometry_;
+    QLabel *geometryStatus_, *originHelp_;
+    int workspaceMode_ = 0;
+    bool changingGeometry_ = false;
     QSet<QString> pending_;
     bool syncing_ = false;
     int colorIndex_ = 1;
     int sampledGray_ = -1;
     int lastPaintTool_ = Canvas::Pen;
     int currentTool_ = Canvas::Pen;
-    int penSize_ = 8, eraserSize_ = 20;
+    int penSize_ = 8;
     int activeLayer_ = 0;
     int mapTool_ = Canvas::Pen, maskTool_ = Canvas::Polygon;
     bool changingLayers_ = false;

@@ -22,6 +22,8 @@ public:
     void editImage(const QImage &image, const QString &label);
     void editMetadata(const MapIO::Metadata &meta);
     void rotateImage(double clockwiseDegrees);
+    void cropImage(const QRect &area);
+    QRect knownBounds() const;
     MapIO::SaveResult save(const QString &yamlPath = {});
 signals:
     void changed();

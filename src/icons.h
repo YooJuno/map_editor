@@ -6,8 +6,8 @@
 
 // Small, consistent outline icons rendered by Qt; no platform icon theme or SVG plugin required.
 namespace Icons {
-enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close };
-inline QIcon get(Name name, QColor color = QColor("#49534e")) {
+enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin };
+inline QIcon get(Name name, QColor color = QColor("#becbc3")) {
     QIcon icon;
     for (int size : {16, 20, 24, 32, 40, 48, 64}) {
         QPixmap pixmap(size, size); pixmap.fill(Qt::transparent);
@@ -70,6 +70,15 @@ inline QIcon get(Name name, QColor color = QColor("#49534e")) {
             break;
         case Chevron: path.moveTo(8, 5); path.lineTo(15, 12); path.lineTo(8, 19); break;
         case Close: path.moveTo(6, 6); path.lineTo(18, 18); path.moveTo(18, 6); path.lineTo(6, 18); break;
+        case Rotate:
+            path.moveTo(4, 10); path.cubicTo(4, 1, 19, 1, 20, 10); path.cubicTo(22, 20, 8, 24, 4, 16);
+            path.moveTo(4, 4); path.lineTo(4, 10); path.lineTo(10, 10); break;
+        case Crop:
+            path.moveTo(7, 3); path.lineTo(7, 17); path.lineTo(21, 17);
+            path.moveTo(3, 7); path.lineTo(17, 7); path.lineTo(17, 21); break;
+        case Origin:
+            p.drawEllipse(QPointF(12, 12), 5, 5); path.moveTo(12, 2); path.lineTo(12, 8);
+            path.moveTo(12, 16); path.lineTo(12, 22); path.moveTo(2, 12); path.lineTo(8, 12); path.moveTo(16, 12); path.lineTo(22, 12); break;
         }
         p.drawPath(path); p.end();
         icon.addPixmap(pixmap);

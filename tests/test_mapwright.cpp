@@ -206,9 +206,9 @@ private slots:
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, source);
         QVERIFY(!window.isWindowModified()); QVERIFY(window.findChild<QPushButton *>("penTool")->isChecked());
         QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({7.5, 4.5}).toPoint());
-        auto *eraser = window.findChild<QPushButton *>("eraserTool"); eraser->click();
+        window.findChild<QPushButton *>("color0")->click();
         picker->click(); QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, source);
-        QVERIFY(eraser->isChecked());
+        QVERIFY(window.findChild<QPushButton *>("penTool")->isChecked());
         // Applying metadata must not auto-correct an explicitly sampled value.
         window.findChild<QDoubleSpinBox *>("originX")->setValue(1.5);
         window.findChild<QPushButton *>("applyMetadata")->click();
@@ -303,14 +303,15 @@ private slots:
         QCOMPARE(MapIO::load(saved.yamlPath).meta.x, original.meta.x);
         window.close();
     }
-    void guiSeparateBrushWidths() {
+    void guiUnifiedBrushWidth() {
         QTemporaryDir dir; auto saved = MapIO::savePair(map(), dir.filePath("sizes.yaml"));
         MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(saved.yamlPath);
         auto *size = window.findChild<QSpinBox *>("brushSize");
         size->setValue(3);
-        window.findChild<QPushButton *>("eraserTool")->click(); size->setValue(17);
+        QVERIFY(!window.findChild<QPushButton *>("eraserTool"));
+        window.findChild<QPushButton *>("color0")->click();
         window.findChild<QPushButton *>("penTool")->click(); QCOMPARE(size->value(), 3);
-        window.findChild<QPushButton *>("eraserTool")->click(); QCOMPARE(size->value(), 17);
+        window.findChild<QPushButton *>("color1")->click(); QCOMPARE(size->value(), 3);
         window.findChild<QPushButton *>("fillTool")->click(); QVERIFY(!size->isEnabled());
         window.findChild<QPushButton *>("lineTool")->click(); QCOMPARE(size->value(), 3); QVERIFY(size->isEnabled());
         size->setValue(512); QCOMPARE(size->value(), 512);
