@@ -76,6 +76,7 @@ protected:
 private:
     QPoint pixelPoint(QPointF pos) const;
     bool insideImage(QPointF position) const;
+    QRect brushCursorRect(QPointF position) const;
     int activeGray() const { return gray_; }
     void zoomAt(double factor, QPointF anchor);
     void finishStroke();

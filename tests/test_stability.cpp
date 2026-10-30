@@ -10,8 +10,10 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPaintEvent>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
@@ -20,6 +22,18 @@
 #ifdef Q_OS_UNIX
 #include <sys/stat.h>
 #endif
+
+class PaintLog : public QObject {
+public:
+    int count = 0;
+    QRegion region;
+    void clear() { count = 0; region = {}; }
+protected:
+    bool eventFilter(QObject *, QEvent *event) override {
+        if (event->type() == QEvent::Paint) { ++count; region += static_cast<QPaintEvent *>(event)->region(); }
+        return false;
+    }
+};
 
 class StabilityTest : public QObject {
     Q_OBJECT
@@ -72,6 +86,53 @@ private slots:
         Raster::stroke(expected, {30, 30}, {30, 30}, 8, 0); QCOMPARE(doc.image(), expected);
         doc.undo()->undo(); doc.undo()->redo(); QCOMPARE(doc.image(), expected);
     }
+    void pointerHoverRepaintsOnlyTheBrushAndHandNeedsNoRepaint() {
+        Document doc; doc.replace(map(256, 192), false); Canvas canvas(&doc); canvas.resize(800, 600); canvas.setAxes(false); canvas.show();
+        QVERIFY(QTest::qWaitForWindowActive(&canvas)); canvas.actualSize(); QTest::qWait(30);
+        PaintLog log; canvas.installEventFilter(&log);
+        mouse(&canvas, QEvent::MouseMove, {100, 80}, Qt::NoButton, Qt::NoButton); QTest::qWait(25); log.clear();
+        mouse(&canvas, QEvent::MouseMove, {102, 81}, Qt::NoButton, Qt::NoButton); QTest::qWait(25);
+        QVERIFY(log.count > 0); const auto area = log.region.boundingRect();
+        QVERIFY(area.contains(canvas.screenPoint({100.5, 80.5}).toPoint())); QVERIFY(area.contains(canvas.screenPoint({102.5, 81.5}).toPoint()));
+        QVERIFY(area.width() * area.height() < canvas.width() * canvas.height() / 8); QVERIFY(!doc.dirty());
+        canvas.setTool(Canvas::Hand); QTest::qWait(25); log.clear(); QSignalSpy position(&canvas, &Canvas::positionChanged);
+        mouse(&canvas, QEvent::MouseMove, {105, 85}, Qt::NoButton, Qt::NoButton); QTest::qWait(25);
+        QCOMPARE(position.count(), 1); QCOMPARE(log.count, 0); QVERIFY(!doc.dirty());
+    }
+    void plainPgmParsingKeepsCommentsWhitespaceAndIntegerValidation() {
+        QTemporaryDir dir; const auto path = dir.filePath("plain.pgm");
+        write(path, "P2# header\r\n3\t2\n255\n0000000000 000205# cell\r\n255\v17\f32\n10");
+        const auto image = MapIO::readPgm(path); const int expected[]{0, 205, 255, 17, 32, 10};
+        for (int i = 0; i < 6; ++i) QCOMPARE(int(image.constScanLine(i / 3)[i % 3]), expected[i]);
+        for (const auto &token : {"-1", "+1", "1x", "2147483648", "9999999999999999999999999999", "1.0"}) {
+            write(path, QByteArray("P2\n1 1\n255\n") + token); QVERIFY_EXCEPTION_THROWN(MapIO::readPgm(path), std::runtime_error);
+        }
+        write(path, "P2\n2147483648 1\n255\n0"); QVERIFY_EXCEPTION_THROWN(MapIO::readPgm(path), std::runtime_error);
+    }
+    void sparseHistoryRestoresOddStridePixelsAcrossGeometryAndBranches() {
+        Document doc; auto original = map(67, 53); std::mt19937 random(25);
+        for (int y = 0; y < original.image.height(); ++y) for (int x = 0; x < original.image.width(); ++x) original.image.scanLine(y)[x] = uchar(random());
+        doc.replace(original, false); auto edited = original.image.copy();
+        for (const auto point : {QPoint(3, 4), QPoint(61, 47), QPoint(20, 30)}) edited.scanLine(point.y())[point.x()] ^= 255;
+        doc.editImage(edited, "sparse", QRect(3, 4, 59, 44)); QCOMPARE(doc.image(), edited);
+        for (int i = 0; i < 3; ++i) { doc.undo()->undo(); QCOMPARE(doc.image(), original.image); QVERIFY(!doc.dirty()); doc.undo()->redo(); QCOMPARE(doc.image(), edited); }
+        doc.cropImage(QRect(2, 3, 63, 47)); QCOMPARE(doc.image(), edited.copy(2, 3, 63, 47));
+        doc.undo()->undo(); QCOMPARE(doc.image(), edited); doc.undo()->undo(); QCOMPARE(doc.image(), original.image);
+        auto branch = original.image.copy(); branch.scanLine(9)[12] ^= 43; doc.editImage(branch, "branch", QRect(12, 9, 1, 1));
+        QVERIFY(!doc.undo()->canRedo()); QCOMPARE(doc.image(), branch); doc.undo()->undo(); QCOMPARE(doc.image(), original.image); QVERIFY(!doc.dirty());
+    }
+    void trinaryMasksMatchEveryPixelClassification() {
+        QTemporaryDir dir; const auto reference = map(256, 1);
+        for (int negate : {0, 1}) {
+            auto source = reference; source.image = reference.image.copy(); source.meta.negate = negate; source.meta.free = .15; source.meta.occupied = .82;
+            for (int x = 0; x < 256; ++x) source.image.scanLine(0)[x] = uchar(x);
+            const auto paths = MapIO::savePair(source, dir.filePath(QString("mask-%1.yaml").arg(negate)));
+            for (auto kind : {Mask::Keepout, Mask::SpeedPercent}) {
+                const auto converted = Mask::load(paths.yamlPath, reference, kind);
+                for (int x = 0; x < 256; ++x) { const auto p = MapIO::probability(x, source.meta); QCOMPARE(int(converted.image.constScanLine(0)[x]), p > source.meta.occupied ? 100 : (p < source.meta.free ? 0 : 255)); }
+            }
+        }
+    }
     void loadedSnapshotRejectsAnExternalChangeBeforeAdoption() {
         QTemporaryDir dir; const auto paths = MapIO::savePair(map(), dir.filePath("base.yaml")); auto loaded = MapIO::load(paths.yamlPath);
         auto external = loaded.image.copy(); external.scanLine(2)[3] = 255; const auto externalBytes = MapIO::encodePgm(external); write(paths.imagePath, externalBytes);
@@ -103,7 +164,9 @@ private slots:
         QVERIFY_EXCEPTION_THROWN(second.save(), std::runtime_error); QCOMPARE(MapIO::readPgm(paths.imagePath), image); QVERIFY(second.dirty());
     }
     void historyBudgetIgnoresEvictedAndDiscardedCommands() {
-        Document doc; doc.replace(map(1024, 1024), false); std::mt19937 random(817);
+        // Forty 2 MiB random deltas fit under 96 MiB; duplicate before/after
+        // patches would prematurely discard history at this size.
+        Document doc; doc.replace(map(2048, 1024), false); std::mt19937 random(817);
         for (int i = 0; i < 50; ++i) {
             auto image = doc.image().copy(); auto *data = image.bits(); for (qsizetype offset = 0; offset < image.sizeInBytes(); ++offset) data[offset] = uchar(random());
             doc.editImage(image, "noise");

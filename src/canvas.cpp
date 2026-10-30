@@ -484,6 +484,13 @@ bool Canvas::insideImage(QPointF position) const {
     const auto point = mapPoint(position);
     return point.x() >= 0 && point.y() >= 0 && point.x() < base_->image().width() && point.y() < base_->image().height();
 }
+QRect Canvas::brushCursorRect(QPointF position) const {
+    if (!insideImage(position)) return {};
+    const auto point = pixelPoint(position);
+    const auto center = screenPoint(QPointF(point) + QPointF(brushSize_ % 2 ? .5 : 0, brushSize_ % 2 ? .5 : 0));
+    const double radius = qMax(2., brushSize_ * scale_ / 2.) + 3;
+    return QRectF(center - QPointF(radius, radius), QSizeF(radius * 2, radius * 2)).toAlignedRect().intersected(rect());
+}
 void Canvas::mousePressEvent(QMouseEvent *e) {
     setFocus(); if (base_->empty()) return;
     mouse_ = e->position(); inside_ = true;
@@ -558,6 +565,8 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     update();
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
+    const bool hover = tool_ < Crop && !drawing_ && !panning_ && !selectingCrop_ && !draggingOrigin_ && !rotatingImage_ && !rotatingOrigin_;
+    const auto oldCursor = hover && tool_ == Pen && inside_ ? brushCursorRect(mouse_) : QRect();
     mouse_ = e->position(); inside_ = true;
     if (base_->empty()) return;
     if (editLocked_) { if (panning_) { offset_ += e->position() - panStart_; panStart_ = e->position(); update(); } return; }
@@ -603,7 +612,12 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     }
     if (tool_ == Crop && !selectingCrop_ && !panning_ && !space_) updateCropCursor(e->position());
     if ((tool_ == Rotate || tool_ == Origin) && !panning_ && !space_) updateGeometryCursor(e->position());
-    update();
+    if (hover) {
+        if (tool_ == Pen) {
+            const auto area = oldCursor.united(brushCursorRect(mouse_));
+            if (!area.isEmpty()) update(area);
+        }
+    } else update();
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     if (editLocked_ && !panning_) return;

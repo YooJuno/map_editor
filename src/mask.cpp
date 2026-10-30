@@ -52,15 +52,16 @@ MapIO::Map load(const QString &path, const MapIO::Map &reference, Kind kind) {
     if (mask.extra["map_editor_filter"] && mask.extra["map_editor_filter"].as<std::string>() != key(kind).toStdString())
         fail(I18n::text("선택한 레이어와 마스크 종류가 다릅니다."));
     if (mask.meta.mode == "trinary") {
+        uchar lookup[256];
+        for (int value = 0; value < 256; ++value) {
+            const auto p = MapIO::probability(value, mask.meta);
+            lookup[value] = p > mask.meta.occupied ? 100 : (p < mask.meta.free ? 0 : 255);
+        }
         for (int y = 0; y < mask.image.height(); ++y) {
             auto *row = mask.image.scanLine(y);
-            for (int x = 0; x < mask.image.width(); ++x) {
-                const auto p = MapIO::probability(row[x], mask.meta);
-                row[x] = p > mask.meta.occupied ? 100 : (p < mask.meta.free ? 0 : 255);
-            }
+            for (int x = 0; x < mask.image.width(); ++x) row[x] = lookup[row[x]];
         }
-    }
-    for (int y = 0; y < mask.image.height(); ++y) {
+    } else for (int y = 0; y < mask.image.height(); ++y) {
         const auto *row = mask.image.constScanLine(y);
         for (int x = 0; x < mask.image.width(); ++x) {
             if (row[x] > 100 && row[x] != 255) fail(I18n::text("마스크 값은 0~100 또는 미확인(255)이어야 합니다."));

@@ -87,24 +87,33 @@ bool space(char c) { return c == ' ' || c == '\n' || c == '\r' || c == '\t' || c
 class Tokens {
 public:
     explicit Tokens(const QByteArray &b) : bytes(b) {}
-    QByteArray next() {
+    void skip() {
         for (;;) {
             while (pos < bytes.size() && space(bytes[pos])) ++pos;
             if (pos == bytes.size()) fail(I18n::text("PGM 헤더 또는 픽셀 데이터가 잘렸습니다."));
             if (bytes[pos] != '#') break;
             while (pos < bytes.size() && bytes[pos] != '\n' && bytes[pos] != '\r') ++pos;
         }
+    }
+    QByteArray next() {
+        skip();
         auto start = pos;
         while (pos < bytes.size() && !space(bytes[pos]) && bytes[pos] != '#') ++pos;
         return bytes.mid(start, pos - start);
     }
     int integer() {
-        const auto token = next();
-        if (token.isEmpty()) fail(I18n::text("잘못된 PGM 정수입니다."));
-        for (char c : token) if (c < '0' || c > '9') fail(I18n::text("잘못된 PGM 정수입니다."));
-        bool ok = false;
-        int value = token.toInt(&ok);
-        if (!ok) fail(I18n::text("PGM 정수 범위를 초과했습니다."));
+        skip();
+        int value = 0;
+        bool overflow = false;
+        const auto *data = bytes.constData();
+        while (pos < bytes.size() && !space(data[pos]) && data[pos] != '#') {
+            const char c = data[pos++];
+            if (c < '0' || c > '9') fail(I18n::text("잘못된 PGM 정수입니다."));
+            const int digit = c - '0';
+            if (value > (std::numeric_limits<int>::max() - digit) / 10) overflow = true;
+            if (!overflow) value = value * 10 + digit;
+        }
+        if (overflow) fail(I18n::text("PGM 정수 범위를 초과했습니다."));
         return value;
     }
     const QByteArray &bytes;
@@ -194,10 +203,13 @@ QImage readPgm(const QString &path, QByteArray *fingerprint) {
         if (bytes.size() - tokens.pos != qint64(w) * h) fail(I18n::text("PGM 픽셀 수가 크기와 다릅니다. 잘린 파일 또는 다중 이미지입니다."));
         for (int y = 0; y < h; ++y) std::memcpy(image.scanLine(y), bytes.constData() + tokens.pos + qint64(y) * w, size_t(w));
     } else {
-        for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) {
-            int v = tokens.integer();
-            if (v > max) fail(I18n::text("PGM 픽셀 값이 Maxval보다 큽니다."));
-            image.scanLine(y)[x] = uchar(v);
+        for (int y = 0; y < h; ++y) {
+            auto *row = image.scanLine(y);
+            for (int x = 0; x < w; ++x) {
+                int v = tokens.integer();
+                if (v > max) fail(I18n::text("PGM 픽셀 값이 Maxval보다 큽니다."));
+                row[x] = uchar(v);
+            }
         }
         while (tokens.pos < bytes.size()) {
             if (space(bytes[tokens.pos])) ++tokens.pos;

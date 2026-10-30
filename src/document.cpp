@@ -33,7 +33,18 @@ void patch(QImage &image, const QRect &rect, const QByteArray &bytes) {
     for (int y = 0; y < rect.height(); ++y)
         std::memcpy(target + qsizetype(y + rect.y()) * stride + rect.x(), bytes.constData() + qsizetype(y) * rect.width(), size_t(rect.width()));
 }
-struct PixelData { QRect area; QByteArray before, after, initial; };
+void xorPatch(QImage &image, const QRect &rect, const QByteArray &delta) {
+    auto *target = image.bits(); const auto stride = image.bytesPerLine();
+    if (!target) throw std::runtime_error(I18n::utf8("메모리 할당 실패"));
+    for (int y = 0; y < rect.height(); ++y) {
+        auto *row = target + qsizetype(y + rect.y()) * stride + rect.x();
+        const auto *source = reinterpret_cast<const uchar *>(delta.constData() + qsizetype(y) * rect.width());
+        for (int x = 0; x < rect.width(); ++x) row[x] ^= source[x];
+    }
+}
+// XOR is reversible in either direction, so one sparse delta replaces two
+// complete before/after patches without changing any pixel values.
+struct PixelData { QRect area; QByteArray packed, initial; };
 struct GeometryData {
     QImage initial;
     QSize beforeSize, afterSize;
@@ -55,17 +66,17 @@ class PixelCommand : public QUndoCommand {
 public:
     PixelCommand(Document *d, PixelData data, const QString &label)
         : QUndoCommand(label), doc(d), data(std::move(data)) {}
-    void undo() override { apply(data.before); }
+    void undo() override { apply(); }
     void redo() override {
-        if (!data.initial.isEmpty()) { patch(doc->map_.image, data.area, data.initial); data.initial = {}; }
-        else apply(data.after);
+        if (!data.initial.isEmpty()) { xorPatch(doc->map_.image, data.area, data.initial); data.initial = {}; }
+        else apply();
     }
-    qsizetype byteSize() const { return data.before.size() + data.after.size(); }
+    qsizetype byteSize() const { return data.packed.size(); }
 private:
-    void apply(const QByteArray &packed) {
+    void apply() {
         const auto expected = qsizetype(data.area.width()) * data.area.height();
-        const auto bytes = work(doc->worker_, I18n::text("편집 기록 복원 중…"), [packed, expected] { return unpack(packed, expected); });
-        patch(doc->map_.image, data.area, bytes);
+        const auto bytes = work(doc->worker_, I18n::text("편집 기록 복원 중…"), [packed = data.packed, expected] { return unpack(packed, expected); });
+        xorPatch(doc->map_.image, data.area, bytes);
     }
     Document *doc;
     PixelData data;
@@ -168,8 +179,14 @@ void Document::editImage(const QImage &after, const QString &label, const QRect 
         PixelData data;
         if (right >= left) {
             data.area = QRect(QPoint(left, top), QPoint(right, bottom));
-            data.before = compress(rawPixels(before, data.area));
-            data.initial = rawPixels(after, data.area); data.after = compress(data.initial);
+            data.initial.resize(qsizetype(data.area.width()) * data.area.height());
+            auto *delta = reinterpret_cast<uchar *>(data.initial.data());
+            for (int y = 0; y < data.area.height(); ++y) {
+                const auto *a = before.constScanLine(y + top) + left, *b = after.constScanLine(y + top) + left;
+                auto *row = delta + qsizetype(y) * data.area.width();
+                for (int x = 0; x < data.area.width(); ++x) row[x] = a[x] ^ b[x];
+            }
+            data.packed = compress(data.initial);
         }
         return data;
     });
