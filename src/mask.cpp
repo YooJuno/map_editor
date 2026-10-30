@@ -7,8 +7,6 @@ namespace {
 [[noreturn]] void fail(const QString &message) { throw std::runtime_error(message.toUtf8().constData()); }
 void checkReference(const MapIO::Map &reference) {
     if (reference.image.isNull()) fail(I18n::text("원본 지도를 먼저 열어 주세요."));
-    if (std::abs(std::remainder(reference.meta.yaw, 2 * std::acos(-1.))) > 1e-9)
-        fail(I18n::text("Nav2 필터는 회전된 원점(Yaw)을 지원하지 않습니다. Yaw가 0인 지도를 사용하세요."));
 }
 QString key(Mask::Kind kind) { return kind == Mask::Keepout ? "keepout" : "speed_percent"; }
 }
@@ -36,7 +34,6 @@ MapIO::Map create(const MapIO::Map &reference, Kind kind) {
     mask.image.fill(0);
     mask.meta = reference.meta;
     mask.meta.mode = "raw";
-    mask.meta.yaw = 0;
     mask.meta.negate = 0;
     mask.extra = YAML::Node(YAML::NodeType::Map);
     mask.extra["map_editor_filter"] = key(kind).toStdString();
@@ -71,7 +68,6 @@ MapIO::Map load(const QString &path, const MapIO::Map &reference, Kind kind) {
     }
     mask.meta.mode = "raw";
     mask.meta.negate = 0;
-    mask.meta.yaw = 0;
     mask.extra["map_editor_filter"] = key(kind).toStdString();
     return mask;
 }

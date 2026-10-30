@@ -57,26 +57,37 @@ private slots:
         QFile style(":/style.qss"); if (style.open(QIODevice::ReadOnly)) qApp->setStyleSheet(QString::fromUtf8(style.readAll()));
     }
     void rawMasksRoundTrip_data() {
-        QTest::addColumn<int>("kind"); QTest::addColumn<int>("value");
-        QTest::newRow("keepout") << int(Mask::Keepout) << 100;
-        QTest::newRow("speed-30") << int(Mask::SpeedPercent) << 30;
-        QTest::newRow("speed-1") << int(Mask::SpeedPercent) << 1;
-        QTest::newRow("speed-100") << int(Mask::SpeedPercent) << 100;
+        QTest::addColumn<int>("kind"); QTest::addColumn<int>("value"); QTest::addColumn<double>("yaw");
+        QTest::newRow("keepout") << int(Mask::Keepout) << 100 << 0.;
+        QTest::newRow("speed-30") << int(Mask::SpeedPercent) << 30 << 0.;
+        QTest::newRow("speed-1") << int(Mask::SpeedPercent) << 1 << 0.;
+        QTest::newRow("speed-100") << int(Mask::SpeedPercent) << 100 << 0.;
+        QTest::newRow("keepout-rotated") << int(Mask::Keepout) << 100 << .37;
+        QTest::newRow("speed-rotated") << int(Mask::SpeedPercent) << 30 << -.83;
+        QTest::newRow("keepout-half-turn") << int(Mask::Keepout) << 100 << std::acos(-1.);
+        QTest::newRow("speed-full-turn") << int(Mask::SpeedPercent) << 60 << 2 * std::acos(-1.);
     }
     void rawMasksRoundTrip() {
-        QFETCH(int, kind); QFETCH(int, value); QTemporaryDir dir; const auto base = reference();
+        QFETCH(int, kind); QFETCH(int, value); QFETCH(double, yaw); QTemporaryDir dir; auto base = reference(); base.meta.yaw = yaw;
         Document mask(nullptr, true); mask.replace(Mask::create(base, Mask::Kind(kind)), false);
+        QCOMPARE(mask.meta().yaw, yaw); QVERIFY(Mask::compatible(mask.map(), base));
         QVERIFY(!mask.dirty()); auto im = mask.image().copy(); Raster::rectangle(im, {4, 3}, {12, 10}, 1, value, true);
         mask.editImage(im, "zone"); const auto saved = mask.save(dir.filePath("마스크.yaml"));
         const auto loaded = MapIO::load(saved.yamlPath, true);
         QCOMPARE(loaded.meta.mode, QString("raw")); QCOMPARE(loaded.meta.negate, 0);
         QCOMPARE(loaded.meta.x, base.meta.x); QCOMPARE(loaded.meta.y, base.meta.y); QCOMPARE(loaded.meta.resolution, base.meta.resolution);
+        QCOMPARE(loaded.meta.yaw, yaw);
         QCOMPARE(int(loaded.image.constScanLine(5)[6]), value); QCOMPARE(int(loaded.image.constScanLine(0)[0]), 0);
-        QCOMPARE(Mask::load(saved.yamlPath, base, Mask::Kind(kind)).image, mask.image());
+        const auto reopened = Mask::load(saved.yamlPath, base, Mask::Kind(kind));
+        QCOMPARE(reopened.image, mask.image()); QCOMPARE(reopened.meta.yaw, yaw);
+        QCOMPARE(MapIO::pixelToWorld({6.5, 5.5}, loaded.image.height(), loaded.meta), MapIO::pixelToWorld({6.5, 5.5}, base.image.height(), base.meta));
         QVERIFY(throws([&] { MapIO::load(saved.yamlPath); }));
     }
+    void trinaryImport_data() {
+        QTest::addColumn<double>("yaw"); QTest::newRow("zero") << 0.; QTest::newRow("rotated") << -.43;
+    }
     void trinaryImport() {
-        QTemporaryDir dir; const auto base = reference(); auto map = base;
+        QFETCH(double, yaw); QTemporaryDir dir; auto base = reference(); base.meta.yaw = yaw; auto map = base;
         map.image.scanLine(3)[4] = 0; map.image.scanLine(4)[4] = 205;
         const auto paths = MapIO::savePair(map, dir.filePath("legacy.yaml"));
         const auto mask = Mask::load(paths.yamlPath, base, Mask::Keepout);
@@ -84,6 +95,7 @@ private slots:
         QCOMPARE(int(mask.image.constScanLine(3)[4]), 100);
         QCOMPARE(int(mask.image.constScanLine(4)[4]), 255);
         QCOMPARE(mask.meta.mode, QString("raw"));
+        QCOMPARE(mask.meta.yaw, yaw);
         Document doc(nullptr, true); doc.replace(mask, false);
         const auto original = read(paths.imagePath); doc.save(); QCOMPARE(read(paths.imagePath), original);
     }
@@ -101,8 +113,30 @@ private slots:
         mask.image.scanLine(2)[2] = 101;
         saved = MapIO::savePair(mask, dir.filePath("invalid.yaml"), {}, true);
         QVERIFY(throws([&] { Mask::load(saved.yamlPath, base, Mask::SpeedPercent); }));
-        auto rotated = base; rotated.meta.yaw = .5;
-        QVERIFY(throws([&] { Mask::create(rotated, Mask::Keepout); }));
+        mask.image.fill(0); mask.meta.yaw = .5;
+        saved = MapIO::savePair(mask, dir.filePath("different-yaw.yaml"), {}, true);
+        QVERIFY(throws([&] { Mask::load(saved.yamlPath, base, Mask::SpeedPercent); }));
+    }
+    void rotatedMapCanPaintSaveAndReopenBothMasksWithoutBlocking() {
+        QTemporaryDir dir; auto source = reference(); source.meta.yaw = .37;
+        const auto paths = MapIO::savePair(source, dir.filePath("base.yaml")); const auto originalYaml = read(paths.yamlPath), originalPgm = read(paths.imagePath);
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath); auto *base = window.activeDocument();
+        auto *hint = window.findChild<QLabel *>("maskYawHint"); QVERIFY(hint); QVERIFY(!hint->isVisible());
+        bool blocked = false; QTimer dismiss; dismiss.setInterval(10);
+        connect(&dismiss, &QTimer::timeout, [&] { if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) { blocked = true; box->accept(); } }); dismiss.start();
+        for (auto kind : {Mask::Keepout, Mask::SpeedPercent}) {
+            window.findChild<QPushButton *>(kind == Mask::Keepout ? "keepoutWorkspace" : "speedWorkspace")->click();
+            QVERIFY(hint->isVisible()); QVERIFY(hint->text().contains("Nav2"));
+            window.findChild<QPushButton *>("rectangleTool")->click(); rectangle(window.canvas(), {3.5, 3.5}, {8.5, 8.5});
+            QVERIFY(!blocked); auto *mask = window.activeDocument(); QVERIFY(mask->dirty()); QCOMPARE(mask->meta().yaw, source.meta.yaw);
+            const auto saved = mask->save(dir.filePath(kind == Mask::Keepout ? "keepout.yaml" : "speed.yaml"));
+            window.openMaskPath(saved.yamlPath, kind); QVERIFY(!blocked); QCOMPARE(window.activeDocument()->meta().yaw, source.meta.yaw);
+            const auto reopened = MapIO::load(saved.yamlPath, true); QCOMPARE(reopened.meta.yaw, source.meta.yaw);
+            QCOMPARE(int(reopened.image.constScanLine(5)[5]), kind == Mask::Keepout ? 100 : 30);
+        }
+        window.findChild<QPushButton *>("mapWorkspace")->click(); QVERIFY(!hint->isVisible());
+        QCOMPARE(base->image(), source.image); QCOMPARE(base->meta(), source.meta); QVERIFY(!base->dirty());
+        QCOMPARE(read(paths.yamlPath), originalYaml); QCOMPARE(read(paths.imagePath), originalPgm); QVERIFY(window.close());
     }
     void protectOriginalAndOtherMaskFiles() {
         QTemporaryDir dir; auto base = reference();

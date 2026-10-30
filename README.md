@@ -41,8 +41,14 @@ C++17, Qt 6 Widgets, yaml-cpp를 사용합니다. 실행할 때 ROS나 Python은
 기존 마스크 파일은 보존합니다. 격자가 달라진 원본에는 새 격자에 맞는 마스크를 만들어 주세요.
 
 이 버전은 원본과 **동일한 격자**의 마스크를 지원합니다. 크기·해상도·원점이 다른 마스크는
-자동으로 늘이거나 옮기지 않고 오류를 표시합니다. Nav2 Costmap의 회전 원점 제한에 맞춰
-마스크 생성은 원본 Yaw가 0인 지도에서 지원합니다.
+자동으로 늘이거나 옮기지 않고 오류를 표시합니다. Yaw가 있는 지도에서도 마스크를 편집할 수
+있으며, 마스크의 원점·해상도·Yaw는 원본과 일치하게 저장합니다. Yaw가 있으면 속성 패널에
+Nav2 호환성 안내를 표시합니다. 표준 Nav2 필터는 마스크의 Yaw를 적용하지 않으므로,
+Nav2에서 사용할 때에는 Yaw가 0인 지도를 기준으로 작성해야 합니다.
+편집기에서는 원점이나 각도를 임의로 0으로 바꾸지 않습니다.
+
+이 제한은 [Nav2 필터의 좌표 변환 구현](https://github.com/ros-navigation/navigation2/blob/main/nav2_util/include/nav2_util/occ_grid_utils.hpp)과
+[공식 마스크 안내](https://github.com/ros-navigation/docs.nav2.org/blob/rolling/docs/tutorials/general_tutorials/navigation2_with_keepout_filter/navigation2_with_keepout_filter.md)에 근거합니다.
 
 두 마스크를 겹친 예제도 포함했습니다.
 

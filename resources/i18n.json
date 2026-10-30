@@ -1164,11 +1164,6 @@
     "ja": "先に元のマップを開いてください。",
     "zh": "请先打开原始地图。"
   },
-  "Nav2 필터는 회전된 원점(Yaw)을 지원하지 않습니다. Yaw가 0인 지도를 사용하세요.": {
-    "en": "Nav2 filters do not support rotated origins (yaw). Use a map with yaw 0.",
-    "ja": "Nav2 フィルターは原点の回転 (Yaw) に対応していません。Yaw が 0 のマップを使用してください。",
-    "zh": "Nav2 滤波器不支持旋转的原点（Yaw）。请使用 Yaw 为 0 的地图。"
-  },
   "다른 레이어의 파일에는 덮어쓸 수 없습니다. 별도의 이름으로 저장하세요: ": {
     "en": "Cannot overwrite another layer's files. Save under a different name: ",
     "ja": "別のレイヤーのファイルは上書きできません。別の名前で保存してください：",
@@ -1540,5 +1535,15 @@
     "en": "Only regular files can be read: %1",
     "ja": "通常のファイルのみ読み込めます: %1",
     "zh": "只能读取普通文件：%1"
+  },
+  "마스크는 지도와 같은 Yaw로 저장됩니다.\n표준 Nav2 필터는 마스크의 Yaw를 적용하지 않습니다. Nav2에서 사용할 때는 Yaw가 0인 지도를 기준으로 작성해야 합니다.": {
+    "en": "Masks are saved with the same yaw as the map.\nStandard Nav2 filters do not apply mask yaw. For Nav2, create the mask using a map with yaw 0.",
+    "ja": "マスクはマップと同じ Yaw で保存されます。\n標準の Nav2 フィルターはマスクの Yaw を適用しません。Nav2 用には Yaw が 0 のマップを基に作成してください。",
+    "zh": "掩码将使用与地图相同的 Yaw 保存。\n标准 Nav2 过滤器不会应用掩码的 Yaw。用于 Nav2 时，请基于 Yaw 为 0 的地图制作掩码。"
+  },
+  "현재 Yaw %1°\nNav2용으로 사용하려면 Yaw 0 필요": {
+    "en": "Current yaw: %1°\nNav2 requires yaw 0",
+    "ja": "現在の Yaw: %1°\nNav2 用には Yaw 0 が必要",
+    "zh": "当前 Yaw：%1°\n用于 Nav2 时需要 Yaw 为 0"
   }
 }

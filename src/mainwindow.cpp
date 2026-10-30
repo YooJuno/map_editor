@@ -648,6 +648,9 @@ QWidget *MainWindow::makeProperties() {
     auto *maskLayout = new QVBoxLayout(maskProperties_); maskLayout->setContentsMargins(0, 0, 0, 0); maskLayout->setSpacing(10);
     maskLayout->addWidget(sectionTitle(I18n::text("구역 편집")));
     maskHelp_ = new QLabel; maskHelp_->setWordWrap(true); maskLayout->addWidget(maskHelp_);
+    maskYawHint_ = new QLabel; maskYawHint_->setObjectName("maskYawHint"); maskYawHint_->setWordWrap(true);
+    maskYawHint_->setToolTip(I18n::text("마스크는 지도와 같은 Yaw로 저장됩니다.\n표준 Nav2 필터는 마스크의 Yaw를 적용하지 않습니다. Nav2에서 사용할 때는 Yaw가 0인 지도를 기준으로 작성해야 합니다."));
+    maskLayout->addWidget(maskYawHint_);
     speedLabel_ = new QLabel(I18n::text("새 구역 속도 (최대 속도 대비)")); speedLabel_->setWordWrap(true); maskLayout->addWidget(speedLabel_);
     speedPercent_ = new QSpinBox; speedPercent_->setObjectName("speedPercent"); speedPercent_->setRange(1, 100); speedPercent_->setValue(30); speedPercent_->setSuffix(" %"); maskLayout->addWidget(speedPercent_);
     connect(speedPercent_, &QSpinBox::valueChanged, this, [this] { if (activeLayer_ == 2) canvas_->setGray(speedPercent_->value()); refreshPalette(); });
@@ -1137,6 +1140,9 @@ void MainWindow::refresh() {
     closeMasks_->setVisible(hasMasks());
     speedPercent_->setVisible(activeLayer_ == 2); speedLabel_->setVisible(activeLayer_ == 2);
     maskHelp_->setText(activeLayer_ == 1 ? I18n::text("빨강으로 표시된 구역은 진입 금지입니다.") : I18n::text("파랑 영역은 설정한 비율로 속도를 제한합니다."));
+    const double yaw = std::remainder(doc_.meta().yaw, 2 * std::acos(-1.));
+    maskYawHint_->setVisible(!empty && mask && std::abs(yaw) > 1e-9);
+    maskYawHint_->setText(I18n::text("현재 Yaw %1°\nNav2용으로 사용하려면 Yaw 0 필요").arg(yaw / Rad, 0, 'f', 2));
     maskHelp_->setStyleSheet(activeLayer_ == 1 ? (Theme::isDark() ? "color: #dda294;" : "color: #b63830;") : (Theme::isDark() ? "color: #a0c0e3;" : "color: #2366b4;"));
     keepoutVisible_->setEnabled(maskInUse(keepout_)); speedVisible_->setEnabled(maskInUse(speedMask_)); opacity_->setEnabled(hasMasks());
     { QSignalBlocker block(layer_);

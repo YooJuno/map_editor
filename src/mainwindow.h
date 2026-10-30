@@ -98,7 +98,7 @@ private:
     QSpinBox *speedPercent_;
     QSlider *opacity_;
     QCheckBox *keepoutVisible_, *speedVisible_;
-    QLabel *opacityLabel_, *maskHelp_, *speedLabel_, *geometryHint_;
+    QLabel *opacityLabel_, *maskHelp_, *maskYawHint_, *speedLabel_, *geometryHint_;
     QPushButton *openMask_, *saveMask_, *closeMasks_, *clearMask_;
     QLabel *fileLabel_, *details_, *coordinates_, *zoomLabel_, *radLabel_, *paletteNote_, *metadataState_;
     QLabel *documentTitle_, *documentState_, *toolTitle_, *toolContext_;
