@@ -234,6 +234,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), worker_(this), do
     connect(canvas_, &Canvas::colorPicked, this, &MainWindow::sampleColor);
     connect(canvas_, &Canvas::operationFailed, this, [this](const QString &message) { QMessageBox::critical(this, "Map Editor", message); });
     connect(canvas_, &Canvas::editingChanged, this, &MainWindow::refresh);
+    connect(canvas_, &Canvas::regionSelectionChanged, this, &MainWindow::refresh);
     connect(canvas_, &Canvas::paintRequested, this, [this] {
         if (activeLayer_ == 0 || !activeDocument()->empty()) return;
         try { activeDocument()->replace(Mask::create(doc_.map(), activeLayer_ == 1 ? Mask::Keepout : Mask::SpeedPercent), false); }
@@ -323,13 +324,15 @@ void MainWindow::refreshThemeIcons() {
     findChild<QLabel *>("brandIcon")->setPixmap(Icons::application().pixmap(26, 26));
     findChild<QToolButton *>("hideInspector")->setIcon(Icons::get(Icons::Chevron));
     findChild<QToolButton *>("cancelPolygon")->setIcon(Icons::get(Icons::Close));
-    const Icons::Name toolIcons[]{Icons::Pen, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon};
-    const QStringList labels{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형")};
-    const QStringList keys{"B", "L", "R", "G", "H", "I", "P"};
-    for (int i = 0; i <= Canvas::Polygon; ++i) {
+    deleteRegion_->setIcon(Icons::get(Icons::Trash)); deselectRegion_->setIcon(Icons::get(Icons::Close));
+    const Icons::Name toolIcons[]{Icons::Pen, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon, Icons::Select};
+    const QStringList labels{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형"), I18n::text("구역 선택")};
+    const QStringList keys{"B", "L", "R", "G", "H", "I", "P", "V"};
+    for (int i = 0; i <= Canvas::SelectRegion; ++i) {
         tools_->button(i)->setIcon(Icons::get(toolIcons[i]));
         tools_->button(i)->setToolTip(i == Canvas::Picker ? I18n::text("스포이드 · 실제 픽셀값 가져오기 (I)") : labels[i] + " (" + keys[i] + ")");
     }
+    tools_->button(Canvas::SelectRegion)->setToolTip(I18n::text("구역 선택 (V) · 같은 값으로 연결된 구역을 선택합니다."));
     const Icons::Name navigationIcons[]{Icons::Map, Icons::Polygon, Icons::Polygon, Icons::Rotate, Icons::Crop, Icons::Origin};
     for (int i = 0; i < 6; ++i) workspaces_->button(i)->setIcon(Icons::get(navigationIcons[i], QColor(i == 1 ? (dark ? "#dba397" : "#b56b61") : i == 2 ? (dark ? "#a0bfe0" : "#6586b0") : (dark ? "#c5cbd4" : "#535d6c"))));
     openAction_->setIcon(Icons::get(Icons::Open));
@@ -417,10 +420,10 @@ QWidget *MainWindow::makeToolRail() {
     auto *panel = new QWidget;
     auto *column = new QVBoxLayout(panel);
     column->setContentsMargins(8, 12, 8, 12); column->setSpacing(5);
-    const QStringList labels{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형")};
-    const QStringList keys{"B", "L", "R", "G", "H", "I", "P"};
-    const QStringList names{"penTool", "lineTool", "rectangleTool", "fillTool", "handTool", "pickerTool", "polygonTool"};
-    const Icons::Name icons[]{Icons::Pen, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon};
+    const QStringList labels{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형"), I18n::text("구역 선택")};
+    const QStringList keys{"B", "L", "R", "G", "H", "I", "P", "V"};
+    const QStringList names{"penTool", "lineTool", "rectangleTool", "fillTool", "handTool", "pickerTool", "polygonTool", "selectRegionTool"};
+    const Icons::Name icons[]{Icons::Pen, Icons::Line, Icons::Rectangle, Icons::Fill, Icons::Hand, Icons::Picker, Icons::Polygon, Icons::Select};
     for (int i = 0; i < labels.size(); ++i) {
         if (i == Canvas::Picker) continue;
         auto *button = new DrawingButton(labels[i]);
@@ -503,6 +506,14 @@ QWidget *MainWindow::makeTools() {
     auto *picker = new QPushButton; picker->setObjectName("pickerTool"); picker->setCheckable(true); picker->setFixedSize(34, 32);
     picker->setAccessibleName(I18n::text("스포이드")); picker->setIcon(Icons::get(Icons::Picker)); picker->setIconSize({20, 20}); picker->setToolTip(I18n::text("스포이드 · 실제 픽셀값 가져오기 (I)"));
     tools_->addButton(picker, Canvas::Picker); paintRow->addWidget(picker);
+    regionControls_ = new QWidget; regionControls_->setObjectName("regionControls"); auto *regionRow = new QHBoxLayout(regionControls_); regionRow->setContentsMargins(0, 0, 0, 0); regionRow->setSpacing(6);
+    deleteRegion_ = new QToolButton; deleteRegion_->setObjectName("deleteRegion"); deleteRegion_->setIcon(Icons::get(Icons::Trash)); deleteRegion_->setIconSize({20, 20}); deleteRegion_->setFixedSize(34, 32);
+    deleteRegion_->setToolTip(I18n::text("선택 구역 삭제 · Delete / Backspace")); deleteRegion_->setAccessibleName(I18n::text("구역 삭제")); regionRow->addWidget(deleteRegion_);
+    deselectRegion_ = new QToolButton; deselectRegion_->setObjectName("deselectRegion"); deselectRegion_->setIcon(Icons::get(Icons::Close)); deselectRegion_->setIconSize({20, 20}); deselectRegion_->setFixedSize(34, 32);
+    deselectRegion_->setToolTip(I18n::text("선택 해제 · Esc")); deselectRegion_->setAccessibleName(I18n::text("선택 해제")); regionRow->addWidget(deselectRegion_);
+    connect(deleteRegion_, &QToolButton::clicked, this, [this] { canvas_->deleteSelectedRegion(); canvas_->setFocus(); });
+    connect(deselectRegion_, &QToolButton::clicked, this, [this] { canvas_->clearRegionSelection(); canvas_->setFocus(); });
+    row->addWidget(regionControls_);
     row->addStretch();
     polygonControls_ = new QWidget; auto *polygonRow = new QHBoxLayout(polygonControls_); polygonRow->setContentsMargins(0, 0, 0, 0); polygonRow->setSpacing(8);
     polygonCount_ = new QLabel; polygonCount_->setObjectName("polygonCount"); polygonRow->addWidget(polygonCount_);
@@ -661,7 +672,7 @@ QWidget *MainWindow::makeProperties() {
     connect(openMask_, &QPushButton::clicked, this, &MainWindow::openMask);
     connect(saveMask_, &QPushButton::clicked, this, [this] { save(); });
     connect(clearMask_, &QPushButton::clicked, this, &MainWindow::clearMask);
-    auto *instructions = new QLabel(I18n::text("점을 찍고 완료 버튼·우클릭·Enter로 완성\nEsc 취소 · 제한 해제로 구역 삭제")); instructions->setObjectName("instructions"); instructions->setWordWrap(true); maskLayout->addWidget(instructions);
+    maskInstructions_ = new QLabel; maskInstructions_->setObjectName("instructions"); maskInstructions_->setWordWrap(true); maskLayout->addWidget(maskInstructions_);
     layout->addWidget(maskProperties_);
     closeMasks_ = new QPushButton(I18n::text("마스크 모두 닫기")); closeMasks_->setObjectName("closeMasks"); layout->addWidget(closeMasks_);
     connect(closeMasks_, &QPushButton::clicked, this, &MainWindow::closeMasks);
@@ -722,7 +733,7 @@ void MainWindow::makeActions() {
 
     auto *help = menuBar()->addMenu(I18n::text("도움말(&H)"));
     help->addAction(I18n::text("단축키"), this, [this] {
-        QMessageBox::information(this, I18n::text("단축키"), I18n::text("B  펜\nL  직선\nR  사각형\nG  채우기\nH  이동\nI  스포이드\nP  다각형\nT  회전\nC  자르기\nO  원점 이동\n\n1 / 2 / 3  흰색 / 검정 / 회색\n[ / ]  굵기 조절\nF  화면 맞춤\n0  100%\nEnter  회전·자르기·원점 적용\nEsc  그리는 중인 획·미리보기 취소\n\n휠  확대·축소\n가운데 버튼 또는 Space+드래그  이동\n\nCtrl (macOS Cmd)+O  열기\nCtrl/Cmd+S  저장\nCtrl/Cmd+Shift+S  다른 이름으로 저장\nCtrl/Cmd+Z  실행 취소\nCtrl/Cmd+Shift+Z  다시 실행"));
+        QMessageBox::information(this, I18n::text("단축키"), I18n::text("B  펜\nL  직선\nR  사각형\nG  채우기\nH  이동\nI  스포이드\nP  다각형\nV  구역 선택 (마스크)\nT  회전\nC  자르기\nO  원점 이동\n\n1 / 2 / 3  흰색 / 검정 / 회색\n[ / ]  굵기 조절\nF  화면 맞춤\n0  100%\nEnter  회전·자르기·원점 적용\nDelete / Backspace  선택 구역 삭제\nEsc  그리는 중인 획·미리보기·선택 취소\n\n휠  확대·축소\n가운데 버튼 또는 Space+드래그  이동\n\nCtrl (macOS Cmd)+O  열기\nCtrl/Cmd+S  저장\nCtrl/Cmd+Shift+S  다른 이름으로 저장\nCtrl/Cmd+Z  실행 취소\nCtrl/Cmd+Shift+Z  다시 실행"));
     });
     help->addAction(I18n::text("정보"), this, [this] {
         QMessageBox::about(this, "Map Editor", QString(I18n::text("<b>Map Editor %1</b><p>PGM / YAML 지도 편집기</p><p>Qt 6 · MIT License</p>")).arg(MAPWRIGHT_VERSION));
@@ -733,7 +744,7 @@ void MainWindow::makeActions() {
         action->setShortcut(QKeySequence(key)); action->setShortcutContext(Qt::WidgetShortcut);
         canvas_->addAction(action); connect(action, &QAction::triggered, this, callback);
     };
-    const QStringList keys{"B", "L", "R", "G", "H", "I", "P"};
+    const QStringList keys{"B", "L", "R", "G", "H", "I", "P", "V"};
     for (int i = 0; i < keys.size(); ++i) canvasKey(keys[i], [this, i] { tools_->button(i)->click(); });
     for (int i = 0; i < 3; ++i) canvasKey(QString::number(i + 1), [this, i] { chooseColor(i); });
     canvasKey("F", [this] { canvas_->fit(); }); canvasKey("0", [this] { canvas_->actualSize(); });
@@ -745,10 +756,10 @@ void MainWindow::makeActions() {
 void MainWindow::selectTool(int tool) {
     if (busy_) return;
     if (workspaceMode_ >= 3) { selectWorkspace(activeLayer_); if (workspaceMode_ >= 3) return; }
-    if (tool == Canvas::Polygon && activeLayer_ == 0) return;
+    if ((tool == Canvas::Polygon || tool == Canvas::SelectRegion) && activeLayer_ == 0) return;
     canvas_->finishEditing();
     currentTool_ = tool;
-    const QStringList labels{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형")};
+    const QStringList labels{I18n::text("펜"), I18n::text("직선"), I18n::text("사각형"), I18n::text("채우기"), I18n::text("이동"), I18n::text("스포이드"), I18n::text("다각형"), I18n::text("구역 선택")};
     toolTitle_->setText(labels.value(tool));
     if (tool <= Canvas::Fill || tool == Canvas::Polygon) lastPaintTool_ = tool;
     canvas_->setTool(Canvas::Tool(tool));
@@ -1029,7 +1040,7 @@ void MainWindow::closeMasks() {
     { QSignalBlocker block(layer_); layer_->setCurrentIndex(0); }
     canvas_->setDocument(&doc_);
     changingLayers_ = false;
-    refresh(); tools_->button(mapTool_ == Canvas::Polygon ? Canvas::Pen : mapTool_)->click();
+    refresh(); tools_->button(mapTool_ == Canvas::Polygon || mapTool_ == Canvas::SelectRegion ? Canvas::Pen : mapTool_)->click();
 }
 void MainWindow::detachCleanMasks() {
     if ((keepout_.empty() && speedMask_.empty()) || hasDirtyMasks()) return;
@@ -1108,7 +1119,7 @@ void MainWindow::refresh() {
         if (i >= 3) workspaces_->button(i)->setToolTip(dirtyMasks ? I18n::text("마스크 수정 사항을 저장하면 지도 크기와 좌표를 변경할 수 있습니다.") : QStringList{I18n::text("회전 미리보기"), I18n::text("지도 여백 자르기"), I18n::text("원점 위치 지정")}[i - 3]);
     }
     workspaces_->button(workspaceMode_)->setChecked(true);
-    for (int i = 0; i <= Canvas::Polygon; ++i) tools_->button(i)->setEnabled(!empty && (visible || i == Canvas::Hand));
+    for (int i = 0; i <= Canvas::SelectRegion; ++i) tools_->button(i)->setEnabled(!empty && (visible || i == Canvas::Hand));
     propertiesPanel_->setEnabled(!empty);
     layer_->setEnabled(!empty);
     baseProperties_->setVisible(!empty && !mask && (!geometry || workspaceMode_ == 5)); maskProperties_->setVisible(!empty && mask);
@@ -1121,6 +1132,11 @@ void MainWindow::refresh() {
     const bool previewPending = geometryPending();
     const int polygonPoints = canvas_->polygonPointCount();
     polygonControls_->setVisible(polygonPoints > 0);
+    const bool selectingRegion = mask && !geometry && currentTool_ == Canvas::SelectRegion;
+    regionControls_->setVisible(selectingRegion);
+    deleteRegion_->setEnabled(selectingRegion && visible && canvas_->hasRegionSelection());
+    deselectRegion_->setEnabled(canvas_->hasRegionSelection());
+    if (selectingRegion) toolContext_->setText(canvas_->hasRegionSelection() ? I18n::text("%1 px 선택 · Delete로 삭제").arg(qlonglong(canvas_->regionSelectionPixels())) : I18n::text("지울 구역을 클릭하세요."));
     polygonCount_->setText(QString(I18n::text("%1개 점")).arg(polygonPoints)); finishPolygon_->setEnabled(polygonPoints >= 3);
     finishPolygon_->setToolTip(polygonPoints < 3 ? I18n::text("점 3개 이상을 찍으세요 · Esc 취소") : I18n::text("찍은 점으로 다각형 완성 · Enter 또는 우클릭"));
     toolContext_->setVisible(polygonPoints == 0);
@@ -1130,16 +1146,18 @@ void MainWindow::refresh() {
     findChild<QCheckBox *>("showAxes")->setVisible(!empty && !geometry);
     const auto rules = propertiesPanel_->findChildren<QFrame *>("sectionRule");
     for (qsizetype i = 0; i < rules.size(); ++i) rules[i]->setVisible(!empty && (i == 0 || (hasMasks() && !geometry)));
-    paintColorPanel_->setVisible(!geometry && currentTool_ != Canvas::Hand);
+    paintColorPanel_->setVisible(!geometry && currentTool_ != Canvas::Hand && currentTool_ != Canvas::SelectRegion);
     colorPanel_->setVisible(!mask); maskColorPanel_->setVisible(mask);
     filled_->setVisible(!geometry && !mask && currentTool_ == Canvas::Rectangle);
     brushPanel_->setVisible(!geometry && (currentTool_ == Canvas::Pen || currentTool_ == Canvas::Line || currentTool_ == Canvas::Rectangle));
     tools_->button(Canvas::Polygon)->setVisible(mask); tools_->button(Canvas::Polygon)->setEnabled(!empty && mask && visible);
+    tools_->button(Canvas::SelectRegion)->setVisible(mask); tools_->button(Canvas::SelectRegion)->setEnabled(!empty && mask && visible);
     for (auto *field : {resolution_, x_, y_, yaw_}) field->setEnabled(!dirtyMasks);
     geometryHint_->setVisible(dirtyMasks);
     closeMasks_->setVisible(hasMasks());
     speedPercent_->setVisible(activeLayer_ == 2); speedLabel_->setVisible(activeLayer_ == 2);
     maskHelp_->setText(activeLayer_ == 1 ? I18n::text("빨강으로 표시된 구역은 진입 금지입니다.") : I18n::text("파랑 영역은 설정한 비율로 속도를 제한합니다."));
+    maskInstructions_->setText(selectingRegion ? I18n::text("같은 값으로 맞닿은 부분은 하나의 구역입니다.\nEsc로 선택 해제 · Ctrl/Cmd+Z로 복원") : I18n::text("점을 찍고 완료 버튼·우클릭·Enter로 완성\nEsc 취소 · 제한 해제로 구역 삭제"));
     const double yaw = std::remainder(doc_.meta().yaw, 2 * std::acos(-1.));
     maskYawHint_->setVisible(!empty && mask && std::abs(yaw) > 1e-9);
     maskYawHint_->setText(I18n::text("현재 Yaw %1°\nNav2용으로 사용하려면 Yaw 0 필요").arg(yaw / Rad, 0, 'f', 2));

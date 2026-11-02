@@ -106,6 +106,23 @@ private slots:
         QVERIFY(!window.findChild<QPushButton *>("rotateWorkspace")->property("locked").toBool());
         QVERIFY(!window.findChild<QPushButton *>("closeMasks")->isVisible()); window.close();
     }
+    void selectedRegionSurvivesLanguageSwitchAndDeletesOnce() {
+        QTemporaryDir dir; const auto paths = MapIO::savePair(reference(), dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath);
+        window.findChild<QPushButton *>("keepoutWorkspace")->click(); window.findChild<QPushButton *>("rectangleTool")->click(); auto *canvas = window.canvas();
+        QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({3.5, 3.5}).toPoint());
+        QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({10.5, 10.5}).toPoint());
+        auto *mask = window.activeDocument(); mask->save(dir.filePath("mask.yaml")); const auto original = mask->image().copy();
+        window.findChild<QPushButton *>("selectRegionTool")->click(); QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({5.5, 5.5}).toPoint());
+        QVERIFY(canvas->hasRegionSelection()); const auto pixels = canvas->regionSelectionPixels();
+        for (const auto &code : {"en", "ja", "zh", "ko"}) {
+            switchTo(window, code); QVERIFY(canvas->hasRegionSelection()); QCOMPARE(canvas->regionSelectionPixels(), pixels);
+            auto *remove = window.findChild<QToolButton *>("deleteRegion"); QVERIFY(remove->isEnabled()); QCOMPARE(remove->accessibleName(), I18n::text("구역 삭제"));
+            QCOMPARE(mask->image(), original); QVERIFY(!mask->dirty()); QVERIFY(!window.findChild<QAction *>("saveAction")->isEnabled());
+        }
+        window.findChild<QToolButton *>("deleteRegion")->click(); QVERIFY(!canvas->hasRegionSelection()); QCOMPARE(int(mask->image().constScanLine(5)[5]), 0);
+        QVERIFY(mask->dirty()); window.findChild<QAction *>("undoAction")->trigger(); QCOMPARE(mask->image(), original); QVERIFY(!mask->dirty()); window.close();
+    }
     void cleanupTestCase() { I18n::setLanguage("ko"); }
 };
 QTEST_MAIN(LanguageTest)

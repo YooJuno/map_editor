@@ -98,7 +98,7 @@ private:
     QSpinBox *speedPercent_;
     QSlider *opacity_;
     QCheckBox *keepoutVisible_, *speedVisible_;
-    QLabel *opacityLabel_, *maskHelp_, *maskYawHint_, *speedLabel_, *geometryHint_;
+    QLabel *opacityLabel_, *maskHelp_, *maskYawHint_, *maskInstructions_, *speedLabel_, *geometryHint_;
     QPushButton *openMask_, *saveMask_, *closeMasks_, *clearMask_;
     QLabel *fileLabel_, *details_, *coordinates_, *zoomLabel_, *radLabel_, *paletteNote_, *metadataState_;
     QLabel *documentTitle_, *documentState_, *toolTitle_, *toolContext_;
@@ -121,6 +121,8 @@ private:
     QLabel *geometryStatus_, *originHelp_, *geometryLockHint_;
     QWidget *toolDivider_;
     QWidget *polygonControls_;
+    QWidget *regionControls_;
+    QToolButton *deleteRegion_, *deselectRegion_;
     QPushButton *finishPolygon_;
     QLabel *polygonCount_;
     int workspaceMode_ = 0;

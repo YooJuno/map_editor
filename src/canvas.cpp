@@ -16,6 +16,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
 
 namespace { constexpr double Rad = 3.14159265358979323846 / 180.; }
 
@@ -95,19 +96,24 @@ void rectangle(QImage &im, QPoint a, QPoint b, int d, int gray, bool filled) {
         stroke(im, outline.bottomRight(), outline.bottomLeft(), d, gray); stroke(im, outline.bottomLeft(), outline.topLeft(), d, gray);
     }
 }
-void flood(QImage &im, QPoint start, int gray) {
-    if (!im.rect().contains(start)) return;
+FillInfo flood(QImage &im, QPoint start, int gray) {
+    FillInfo result;
+    if (!im.rect().contains(start)) return result;
     const int target = im.constScanLine(start.y())[start.x()];
-    if (target == gray) return;
+    if (target == gray) return result;
+    int minX = im.width(), minY = im.height(), maxX = -1, maxY = -1;
     std::vector<QPoint> pending{start};
     while (!pending.empty()) {
         const auto p = pending.back(); pending.pop_back();
         auto *row = im.scanLine(p.y());
+        if (!row) throw std::runtime_error(I18n::utf8("메모리 할당 실패"));
         if (row[p.x()] != target) continue;
         int left = p.x(), right = p.x();
         while (left > 0 && row[left - 1] == target) --left;
         while (right + 1 < im.width() && row[right + 1] == target) ++right;
         std::fill(row + left, row + right + 1, uchar(gray));
+        minX = qMin(minX, left); maxX = qMax(maxX, right); minY = qMin(minY, p.y()); maxY = qMax(maxY, p.y());
+        result.pixels += right - left + 1;
         for (int y : {p.y() - 1, p.y() + 1}) {
             if (y < 0 || y >= im.height()) continue;
             const auto *next = im.constScanLine(y);
@@ -118,6 +124,8 @@ void flood(QImage &im, QPoint start, int gray) {
             }
         }
     }
+    if (result.pixels > 0) result.bounds = QRect(QPoint(minX, minY), QPoint(maxX, maxY));
+    return result;
 }
 void polygon(QImage &im, const QPolygonF &points, int gray) {
     if (points.size() < 3) return;
@@ -145,29 +153,74 @@ void polygon(QImage &im, const QPolygonF &points, int gray) {
 Canvas::Canvas(Document *doc, QWidget *parent) : QWidget(parent), doc_(doc), base_(doc) {
     setObjectName("mapCanvas"); setMinimumSize(300, 300); setMouseTracking(true); setFocusPolicy(Qt::StrongFocus); setAcceptDrops(true);
     connect(doc, &Document::loaded, this, [this] { cancelStroke(); fit(); });
-    connect(doc, &Document::changed, this, qOverload<>(&Canvas::update));
+    connect(doc, &Document::changed, this, [this] { clearRegionSelection(); update(); });
     previewTimer_.setSingleShot(true); previewTimer_.setInterval(16);
     connect(&previewTimer_, &QTimer::timeout, this, &Canvas::updateShapePreview);
     draftIdleTimer_.setSingleShot(true); draftIdleTimer_.setInterval(30000);
-    connect(&draftIdleTimer_, &QTimer::timeout, this, [this] { if (!drawing_) { draft_ = {}; draftSourceKey_ = 0; } });
+    connect(&draftIdleTimer_, &QTimer::timeout, this, [this] { if (!drawing_ && !hasRegionSelection()) { draft_ = {}; draftSourceKey_ = 0; } });
 }
 void Canvas::setTool(Tool tool) {
-    finishEditing(); selectingCrop_ = false; stopGeometryDrag(); tool_ = tool; setToolTip({});
+    finishEditing(); clearRegionSelection(); selectingCrop_ = false; stopGeometryDrag(); tool_ = tool; setToolTip({});
     if (tool >= Crop) { draft_ = {}; draftArea_ = {}; draftSourceKey_ = 0; draftIdleTimer_.stop(); }
-    setCursor(tool == Hand || tool == Rotate ? Qt::OpenHandCursor : Qt::CrossCursor); update();
+    setCursor(tool == SelectRegion ? Qt::ArrowCursor : tool == Hand || tool == Rotate ? Qt::OpenHandCursor : Qt::CrossCursor); update();
 }
 void Canvas::setDocument(Document *document) {
-    finishEditing(); doc_ = document ? document : base_;
+    finishEditing(); clearRegionSelection(); doc_ = document ? document : base_;
     draft_ = {}; draftArea_ = {}; draftSourceKey_ = 0; draftIdleTimer_.stop(); update();
 }
 void Canvas::setMaskLayers(Document *keepout, Document *speed) {
     keepout_ = keepout; speed_ = speed;
-    for (auto *layer : {keepout, speed}) if (layer) connect(layer, &Document::changed, this, qOverload<>(&Canvas::update));
+    for (auto *layer : {keepout, speed}) if (layer) connect(layer, &Document::changed, this, [this] { clearRegionSelection(); update(); });
 }
 bool Canvas::editableVisible() const {
     return (doc_ == base_ || maskOpacity_ > 0) && (doc_ != keepout_ || showKeepout_) && (doc_ != speed_ || showSpeed_);
 }
 void Canvas::finishEditing() { if (tool_ == Polygon && drawing_) finishPolygon(); else finishStroke(); stopGeometryDrag(); }
+void Canvas::clearRegionSelection() {
+    if (!hasRegionSelection()) return;
+    if (draftSourceKey_ == doc_->image().cacheKey()) restoreDraft();
+    else { draft_ = {}; draftArea_ = {}; draftSourceKey_ = 0; }
+    regionSelection_ = {}; regionPixels_ = 0; draftIdleTimer_.start();
+    emit regionSelectionChanged(); update();
+}
+void Canvas::selectRegion(QPoint point) {
+    clearRegionSelection();
+    if (doc_ == base_ || doc_->empty() || !doc_->image().rect().contains(point)) return;
+    const int value = doc_->image().constScanLine(point.y())[point.x()];
+    if (value <= 0 || value > 100) return;
+    auto *source = doc_; const auto key = source->image().cacheKey();
+    try {
+        if (!prepareDraft()) return;
+        auto image = std::move(draft_); draft_ = {};
+        struct Selection { QImage image; Raster::FillInfo info; };
+        auto collect = [image = std::move(image), point]() mutable {
+            const auto info = Raster::flood(image, point, 0);
+            return Selection{std::move(image), info};
+        };
+        auto selection = worker_ ? worker_->run(I18n::text("구역 선택 중…"), std::move(collect)) : collect();
+        if (doc_ != source || doc_->image().cacheKey() != key) { draftSourceKey_ = 0; return; }
+        draft_ = std::move(selection.image); draftArea_ = regionSelection_ = selection.info.bounds;
+        regionPixels_ = selection.info.pixels; regionAnchor_ = point; draftSourceKey_ = key;
+        emit regionSelectionChanged(); update();
+    } catch (const std::exception &error) {
+        draft_ = {}; draftArea_ = {}; draftSourceKey_ = 0;
+        emit operationFailed(QString::fromUtf8(error.what()));
+    }
+}
+void Canvas::deleteSelectedRegion() {
+    if (editLocked_ || !hasRegionSelection() || doc_ == base_ || !editableVisible()) return;
+    if (draftSourceKey_ != doc_->image().cacheKey() || draft_.isNull()) { clearRegionSelection(); return; }
+    const auto area = regionSelection_;
+    auto after = std::move(draft_); draft_ = {}; draftArea_ = {};
+    clearRegionSelection();
+    try {
+        doc_->editImage(after, I18n::text("구역 삭제"), area);
+        draft_ = std::move(after); draftSourceKey_ = doc_->image().cacheKey();
+    } catch (const std::exception &error) {
+        draft_ = {}; draftSourceKey_ = 0; emit operationFailed(QString::fromUtf8(error.what()));
+    }
+    draftIdleTimer_.start(); update();
+}
 QSize Canvas::displaySize() const { return rotationPreview_ ? previewSize_ : base_->image().size(); }
 void Canvas::setRotationPreview(double degrees) {
     if (base_->empty()) return;
@@ -432,6 +485,14 @@ void Canvas::paintEvent(QPaintEvent *) {
         if (selection.height() > 24) for (double x : {selection.left(), selection.right()})
             p.drawRect(QRectF(x - 2, selection.center().y() - 4, 4, 8));
     }
+    if (hasRegionSelection() && editableVisible()) {
+        const QRectF selection(screenPoint(QPointF(regionSelection_.topLeft())), QSizeF(regionSelection_.size()) * scale_);
+        p.save(); p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(QColor(15, 20, 28, 210), 3)); p.drawRect(selection);
+        p.setPen(QPen(QColor("#d3e2f5"), 1.5, Qt::DashLine)); p.drawRect(selection);
+        const auto anchor = screenPoint(QPointF(regionAnchor_) + QPointF(.5, .5));
+        p.setPen(QPen(QColor("#31455f"), 1.5)); p.setBrush(QColor("#e3edf9")); p.drawEllipse(anchor, 3.5, 3.5); p.restore();
+    }
     if (tool_ == Polygon && drawing_ && !polygon_.isEmpty()) {
         p.save(); p.translate(offset_); p.scale(scale_, scale_);
         p.setRenderHint(QPainter::Antialiasing);
@@ -533,6 +594,10 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         if (!insideImage(e->position())) { selectingCrop_ = false; return; }
         setCropSelection(QRect(cropStart_, cropStart_)); return;
     }
+    if (tool_ == SelectRegion) {
+        if (insideImage(e->position())) selectRegion(pixelPoint(e->position())); else clearRegionSelection();
+        return;
+    }
     if (!insideImage(e->position())) return;
     if (tool_ == Picker) {
         const auto point = pixelPoint(e->position());
@@ -626,7 +691,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     }
     if (e->button() == Qt::LeftButton && selectingCrop_) { mouseMoveEvent(e); selectingCrop_ = false; updateCropCursor(e->position()); return; }
     if (panning_ && (e->button() == Qt::MiddleButton || e->button() == Qt::LeftButton)) {
-        panning_ = false; setCursor(tool_ == Hand || tool_ == Rotate || space_ ? Qt::OpenHandCursor : Qt::CrossCursor);
+        panning_ = false; setCursor(tool_ == Hand || tool_ == Rotate || space_ ? Qt::OpenHandCursor : tool_ == SelectRegion ? Qt::ArrowCursor : Qt::CrossCursor);
     }
     if (e->button() == Qt::LeftButton && drawing_ && tool_ != Polygon) { mouseMoveEvent(e); finishStroke(); }
 }
@@ -660,6 +725,8 @@ void Canvas::cancelStroke() {
 void Canvas::wheelEvent(QWheelEvent *e) { if (!rotatingImage_ && !rotatingOrigin_ && !draggingOrigin_) zoomAt(std::pow(1.0015, e->angleDelta().y()), e->position()); e->accept(); }
 void Canvas::keyPressEvent(QKeyEvent *e) {
     if (editLocked_ && e->key() != Qt::Key_Space) { e->accept(); return; }
+    if (tool_ == SelectRegion && (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace)) { deleteSelectedRegion(); e->accept(); return; }
+    if (tool_ == SelectRegion && e->key() == Qt::Key_Escape) { clearRegionSelection(); e->accept(); return; }
     if ((tool_ == Crop || tool_ == Origin || rotationPreview_) && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) { stopGeometryDrag(); emit geometryApplyRequested(); e->accept(); }
     else if ((rotationPreview_ || tool_ == Origin) && e->key() == Qt::Key_Escape) { stopGeometryDrag(); emit previewCancelRequested(); e->accept(); }
     else if (tool_ == Crop && e->key() == Qt::Key_Escape) { selectingCrop_ = false; setCropSelection({}); e->accept(); }
@@ -672,14 +739,14 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
     else QWidget::keyPressEvent(e);
 }
 void Canvas::keyReleaseEvent(QKeyEvent *e) {
-    if (e->key() == Qt::Key_Space && !e->isAutoRepeat()) { space_ = false; if (!panning_) setCursor(tool_ == Hand || tool_ == Rotate ? Qt::OpenHandCursor : Qt::CrossCursor); e->accept(); }
+    if (e->key() == Qt::Key_Space && !e->isAutoRepeat()) { space_ = false; if (!panning_) setCursor(tool_ == Hand || tool_ == Rotate ? Qt::OpenHandCursor : tool_ == SelectRegion ? Qt::ArrowCursor : Qt::CrossCursor); e->accept(); }
     else QWidget::keyReleaseEvent(e);
 }
 void Canvas::leaveEvent(QEvent *) { inside_ = false; if (drawing_ && tool_ == Polygon) updateShapePreview(); update(); }
 void Canvas::focusOutEvent(QFocusEvent *e) {
     if (tool_ != Polygon && !editLocked_) finishStroke();
     panning_ = space_ = false; stopGeometryDrag();
-    setCursor(tool_ == Hand || tool_ == Rotate ? Qt::OpenHandCursor : Qt::CrossCursor);
+    setCursor(tool_ == Hand || tool_ == Rotate ? Qt::OpenHandCursor : tool_ == SelectRegion ? Qt::ArrowCursor : Qt::CrossCursor);
     QWidget::focusOutEvent(e);
 }
 void Canvas::dragEnterEvent(QDragEnterEvent *e) {

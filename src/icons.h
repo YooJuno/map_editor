@@ -20,7 +20,7 @@ inline QIcon application() {
     }();
     return icon;
 }
-enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin, Moon, Sun, Globe };
+enum Name { Map, New, Open, Save, Undo, Redo, Fit, Plus, Minus, Pen, Eraser, Line, Rectangle, Fill, Hand, Picker, Polygon, Chevron, Close, Rotate, Crop, Origin, Moon, Sun, Globe, Select, Trash };
 inline QIcon get(Name name, QColor color = {}) {
     if (!color.isValid()) color = QColor(Theme::isDark() ? "#c5cbd4" : "#535d6c");
     QIcon icon;
@@ -83,6 +83,13 @@ inline QIcon get(Name name, QColor color = {}) {
             path.moveTo(4, 7); path.lineTo(17, 3); path.lineTo(21, 16); path.lineTo(10, 21); path.closeSubpath();
             for (auto point : {QPointF(4, 7), QPointF(17, 3), QPointF(21, 16), QPointF(10, 21)}) p.drawEllipse(point, 1.6, 1.6);
             break;
+        case Select:
+            path.moveTo(5, 3); path.lineTo(5, 20); path.lineTo(10, 15); path.lineTo(14, 22);
+            path.lineTo(17, 20); path.lineTo(13, 13); path.lineTo(21, 12); path.closeSubpath(); break;
+        case Trash:
+            path.moveTo(5, 6); path.lineTo(19, 6); path.moveTo(9, 6); path.lineTo(9, 3); path.lineTo(15, 3); path.lineTo(15, 6);
+            path.moveTo(7, 6); path.lineTo(8, 21); path.lineTo(17, 21); path.lineTo(18, 6);
+            path.moveTo(11, 10); path.lineTo(11, 17); path.moveTo(14, 10); path.lineTo(14, 17); break;
         case Chevron: path.moveTo(8, 5); path.lineTo(15, 12); path.lineTo(8, 19); break;
         case Close: path.moveTo(6, 6); path.lineTo(18, 18); path.moveTo(18, 6); path.lineTo(6, 18); break;
         case Rotate:

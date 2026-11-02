@@ -17,9 +17,11 @@
 #include <QStyle>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 #include <QTimer>
 #include <QToolButton>
 #include <cmath>
+#include <random>
 
 class MaskTest : public QObject {
     Q_OBJECT
@@ -154,6 +156,98 @@ private slots:
         QCOMPARE(int(im.constScanLine(3)[0]), 100); QCOMPARE(int(im.constScanLine(3)[7]), 100);
         QCOMPARE(int(im.constScanLine(3)[8]), 0); QCOMPARE(int(im.constScanLine(1)[0]), 0);
         for (int y = 0; y < 20; ++y) for (int x = 0; x < 20; ++x) QVERIFY(im.constScanLine(y)[x] == 0 || im.constScanLine(y)[x] == 100);
+    }
+    void floodReportsTheExactConnectedRegion() {
+        std::mt19937 random(451);
+        for (int sample = 0; sample < 80; ++sample) {
+            QImage image(19, 13, QImage::Format_Grayscale8);
+            for (int y = 0; y < image.height(); ++y) for (int x = 0; x < image.width(); ++x) image.scanLine(y)[x] = uchar((random() % 3) * 30);
+            auto expected = image.copy(); const QPoint start(int(random() % 19), int(random() % 13)); const int value = image.constScanLine(start.y())[start.x()];
+            std::vector<QPoint> pending{start}; expected.scanLine(start.y())[start.x()] = 100; QRect bounds; qsizetype pixels = 0;
+            while (!pending.empty()) {
+                const auto point = pending.back(); pending.pop_back(); ++pixels; bounds = bounds.united(QRect(point, QSize(1, 1)));
+                for (const auto step : {QPoint(1, 0), QPoint(-1, 0), QPoint(0, 1), QPoint(0, -1)}) {
+                    const auto next = point + step;
+                    if (expected.rect().contains(next) && expected.constScanLine(next.y())[next.x()] == value) { expected.scanLine(next.y())[next.x()] = 100; pending.push_back(next); }
+                }
+            }
+            const auto info = Raster::flood(image, start, 100); QCOMPARE(image, expected); QCOMPARE(info.bounds, bounds); QCOMPARE(info.pixels, pixels);
+            const auto unchanged = Raster::flood(image, start, 100); QVERIFY(unchanged.bounds.isEmpty()); QCOMPARE(unchanged.pixels, 0);
+        }
+    }
+    void individualRegionDeletion_data() {
+        QTest::addColumn<int>("kind"); QTest::addColumn<bool>("button");
+        QTest::newRow("keepout-keyboard") << int(Mask::Keepout) << false;
+        QTest::newRow("speed-toolbar") << int(Mask::SpeedPercent) << true;
+    }
+    void individualRegionDeletion() {
+        QFETCH(int, kind); QFETCH(bool, button); QTemporaryDir dir; auto source = reference(); source.meta.yaw = .37;
+        const auto basePaths = MapIO::savePair(source, dir.filePath("base.yaml")); auto maskMap = Mask::create(source, Mask::Kind(kind));
+        const int value = kind == Mask::Keepout ? 100 : 30;
+        Raster::rectangle(maskMap.image, {3, 3}, {9, 9}, 1, value, true); Raster::rectangle(maskMap.image, {16, 3}, {22, 9}, 1, value, true);
+        if (kind == Mask::SpeedPercent) Raster::rectangle(maskMap.image, {10, 3}, {13, 9}, 1, 60, true);
+        maskMap.image.scanLine(0)[0] = 255;
+        const auto maskPaths = MapIO::savePair(maskMap, dir.filePath("mask.yaml"), {}, true);
+        auto otherMap = Mask::create(source, kind == Mask::Keepout ? Mask::SpeedPercent : Mask::Keepout); otherMap.image.scanLine(20)[25] = 100;
+        const auto otherPaths = MapIO::savePair(otherMap, dir.filePath("other.yaml"), {}, true);
+        const auto baseBytes = read(basePaths.imagePath), maskBytes = read(maskPaths.imagePath), otherBytes = read(otherPaths.imagePath);
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(basePaths.yamlPath); auto *base = window.activeDocument();
+        window.openMaskPath(otherPaths.yamlPath, kind == Mask::Keepout ? Mask::SpeedPercent : Mask::Keepout); auto *other = window.activeDocument();
+        window.openMaskPath(maskPaths.yamlPath, Mask::Kind(kind)); auto *mask = window.activeDocument(); auto *canvas = window.canvas();
+        canvas->setFocus(); QTest::keyClick(canvas, Qt::Key_V); QVERIFY(window.findChild<QPushButton *>("selectRegionTool")->isChecked());
+        auto *remove = window.findChild<QToolButton *>("deleteRegion"); QVERIFY(remove->isVisible()); QVERIFY(!remove->isEnabled());
+        auto select = [&](QPointF point) { QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint(point).toPoint()); };
+        select({5.5, 5.5}); QVERIFY(canvas->hasRegionSelection()); QCOMPARE(canvas->regionSelectionPixels(), 49); QVERIFY(remove->isEnabled());
+        QVERIFY(!mask->dirty()); QVERIFY(!canvas->isEditing()); QVERIFY(!window.findChild<QAction *>("saveAction")->isEnabled()); QCOMPARE(mask->image(), maskMap.image);
+        if (button) remove->click(); else QTest::keyClick(canvas, Qt::Key_Delete);
+        auto expected = maskMap.image.copy(); Raster::rectangle(expected, {3, 3}, {9, 9}, 1, 0, true);
+        QCOMPARE(mask->image(), expected); QVERIFY(mask->dirty()); QCOMPARE(mask->undo()->count(), 1); QVERIFY(!canvas->hasRegionSelection()); QVERIFY(!remove->isEnabled());
+        QCOMPARE(other->image(), otherMap.image); QVERIFY(!other->dirty()); QCOMPARE(base->image(), source.image); QVERIFY(!base->dirty());
+        QCOMPARE(read(maskPaths.imagePath), maskBytes); QCOMPARE(read(otherPaths.imagePath), otherBytes); QCOMPARE(read(basePaths.imagePath), baseBytes);
+        window.findChild<QAction *>("undoAction")->trigger(); QCOMPARE(mask->image(), maskMap.image); QVERIFY(!mask->dirty());
+        window.findChild<QAction *>("redoAction")->trigger(); QCOMPARE(mask->image(), expected);
+        select({18.5, 5.5}); QVERIFY(canvas->hasRegionSelection()); QTest::keyClick(canvas, Qt::Key_Escape); QVERIFY(!canvas->hasRegionSelection());
+        QTest::keyClick(canvas, Qt::Key_Delete); QCOMPARE(mask->image(), expected); QCOMPARE(mask->undo()->count(), 1);
+        select({18.5, 5.5}); QTest::keyClick(canvas, Qt::Key_Backspace); QCOMPARE(int(mask->image().constScanLine(5)[18]), 0);
+        window.findChild<QAction *>("undoAction")->trigger(); QCOMPARE(mask->image(), expected);
+        select({18.5, 5.5}); select({0.5, 0.5}); QVERIFY(!canvas->hasRegionSelection()); QTest::keyClick(canvas, Qt::Key_Delete); QCOMPARE(mask->image(), expected);
+        mask->save(); const auto saved = MapIO::load(maskPaths.yamlPath, true); QCOMPARE(saved.image, expected); QVERIFY(saved.meta == maskMap.meta);
+        QCOMPARE(read(otherPaths.imagePath), otherBytes); QCOMPARE(read(basePaths.imagePath), baseBytes); QVERIFY(window.close());
+    }
+    void selectionDoesNotCreateMasksAndCancelsOnVisibilityOrDocumentChanges() {
+        QTemporaryDir dir; const auto paths = MapIO::savePair(reference(), dir.filePath("base.yaml"));
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(paths.yamlPath); auto *base = window.activeDocument();
+        QVERIFY(!window.findChild<QPushButton *>("selectRegionTool")->isVisible()); window.findChild<QPushButton *>("keepoutWorkspace")->click(); auto *mask = window.activeDocument();
+        window.findChild<QPushButton *>("selectRegionTool")->click(); auto *canvas = window.canvas(); auto select = [&] { QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({5.5, 5.5}).toPoint()); };
+        select(); QVERIFY(mask->empty()); QVERIFY(!window.findChild<QAction *>("saveAction")->isEnabled());
+        mask->replace(Mask::create(base->map(), Mask::Keepout), false); auto image = mask->image().copy(); Raster::rectangle(image, {3, 3}, {9, 9}, 1, 100, true); mask->editImage(image, "zone");
+        select(); QVERIFY(canvas->hasRegionSelection()); window.findChild<QCheckBox *>("keepoutVisible")->setChecked(false); QVERIFY(!canvas->hasRegionSelection());
+        QTest::keyClick(canvas, Qt::Key_Delete); QCOMPARE(mask->image(), image); window.findChild<QCheckBox *>("keepoutVisible")->setChecked(true);
+        select(); QVERIFY(canvas->hasRegionSelection()); window.findChild<QSlider *>("maskOpacity")->setValue(0); QVERIFY(!canvas->hasRegionSelection());
+        window.findChild<QSlider *>("maskOpacity")->setValue(45); select(); QVERIFY(canvas->hasRegionSelection());
+        window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(!canvas->hasRegionSelection()); QTest::keyClick(canvas, Qt::Key_Delete); QVERIFY(!mask->dirty()); QCOMPARE(int(mask->image().constScanLine(5)[5]), 0);
+        window.findChild<QAction *>("redoAction")->trigger(); select(); QVERIFY(canvas->hasRegionSelection()); window.findChild<QPushButton *>("mapWorkspace")->click(); QVERIFY(!canvas->hasRegionSelection());
+        canvas->setTool(Canvas::SelectRegion); select(); QTest::keyClick(canvas, Qt::Key_Delete); QCOMPARE(base->image(), reference().image);
+        mask->save(dir.filePath("mask.yaml")); QVERIFY(window.close());
+    }
+    void selectedRegionCannotDeleteDuringWorkAndSavingDoesNotApplyThePreview() {
+        QTemporaryDir dir; const auto basePaths = MapIO::savePair(reference(), dir.filePath("base.yaml")); auto map = Mask::create(reference(), Mask::Keepout);
+        Raster::rectangle(map.image, {3, 3}, {9, 9}, 1, 100, true); const auto maskPaths = MapIO::savePair(map, dir.filePath("mask.yaml"), {}, true);
+        MainWindow window; window.show(); QVERIFY(QTest::qWaitForWindowActive(&window)); window.openPath(basePaths.yamlPath); window.openMaskPath(maskPaths.yamlPath, Mask::Keepout);
+        auto *mask = window.activeDocument(); auto *canvas = window.canvas(); window.findChild<QPushButton *>("selectRegionTool")->click();
+        auto select = [&] { QTest::mouseClick(canvas, Qt::LeftButton, Qt::NoModifier, canvas->screenPoint({5.5, 5.5}).toPoint()); }; select(); QVERIFY(canvas->hasRegionSelection());
+        bool guarded = false;
+        QTimer::singleShot(20, [&] {
+            guarded = !window.findChild<QToolButton *>("deleteRegion")->isEnabled();
+            QTest::keyClick(canvas, Qt::Key_Delete); canvas->deleteSelectedRegion(); QCOMPARE(mask->image(), map.image); QVERIFY(canvas->hasRegionSelection());
+        });
+        window.findChild<WorkQueue *>()->run("region test", [] { QThread::msleep(100); return 1; }); QVERIFY(guarded); QVERIFY(!mask->dirty());
+        QTest::keyPress(canvas, Qt::Key_Space); const auto point = canvas->screenPoint({12, 12}).toPoint(); QTest::mousePress(canvas, Qt::LeftButton, Qt::NoModifier, point);
+        QTest::mouseMove(canvas, point + QPoint(30, 20)); QTest::mouseRelease(canvas, Qt::LeftButton, Qt::NoModifier, point + QPoint(30, 20)); QTest::keyRelease(canvas, Qt::Key_Space);
+        QCOMPARE(canvas->cursor().shape(), Qt::ArrowCursor); QVERIFY(canvas->hasRegionSelection()); QCOMPARE(mask->image(), map.image);
+        const auto copy = mask->save(dir.filePath("copy.yaml")); QCOMPARE(MapIO::load(copy.yamlPath, true).image, map.image); QVERIFY(!canvas->hasRegionSelection());
+        select(); QVERIFY(canvas->hasRegionSelection()); mask->replace(MapIO::load(maskPaths.yamlPath, true), false); QVERIFY(!canvas->hasRegionSelection());
+        QTest::keyClick(canvas, Qt::Key_Delete); QCOMPARE(mask->image(), map.image); QVERIFY(!mask->dirty()); QVERIFY(window.close());
     }
     void polygonCommitCancelAndPointsUndo() {
         Document base; base.replace(reference(), false);

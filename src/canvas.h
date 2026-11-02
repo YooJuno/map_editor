@@ -8,13 +8,14 @@
 namespace Raster {
 void stroke(QImage &image, QPoint from, QPoint to, int diameter, int gray);
 void rectangle(QImage &image, QPoint from, QPoint to, int diameter, int gray, bool filled);
-void flood(QImage &image, QPoint start, int gray);
+struct FillInfo { QRect bounds; qsizetype pixels = 0; };
+FillInfo flood(QImage &image, QPoint start, int gray);
 void polygon(QImage &image, const QPolygonF &points, int gray);
 }
 class Canvas : public QWidget {
     Q_OBJECT
 public:
-    enum Tool { Pen, Line, Rectangle, Fill, Hand, Picker, Polygon, Crop, Origin, Rotate };
+    enum Tool { Pen, Line, Rectangle, Fill, Hand, Picker, Polygon, SelectRegion, Crop, Origin, Rotate };
     explicit Canvas(Document *document, QWidget *parent = nullptr);
     void setTool(Tool tool);
     void setBrushSize(int size) { if (brushSize_ != size) { brushSize_ = size; update(); } }
@@ -24,12 +25,16 @@ public:
     bool undoPolygonPoint();
     int polygonPointCount() const { return tool_ == Polygon && drawing_ ? int(polygon_.size()) : 0; }
     void cancelPolygon() { if (tool_ == Polygon && drawing_) cancelStroke(); }
+    bool hasRegionSelection() const { return !regionSelection_.isEmpty(); }
+    qsizetype regionSelectionPixels() const { return regionPixels_; }
+    void clearRegionSelection();
+    void deleteSelectedRegion();
     void setDocument(Document *document);
     void setWorkQueue(WorkQueue *queue) { worker_ = queue; }
     void setEditLocked(bool locked) { editLocked_ = locked; }
     void setMaskLayers(Document *keepout, Document *speed);
-    void setMaskOpacity(double opacity) { opacity = qBound(0., opacity, 1.); if (maskOpacity_ != opacity) { maskOpacity_ = opacity; update(); } }
-    void setMaskVisible(bool keepout, bool speed) { if (showKeepout_ != keepout || showSpeed_ != speed) { showKeepout_ = keepout; showSpeed_ = speed; update(); } }
+    void setMaskOpacity(double opacity) { opacity = qBound(0., opacity, 1.); if (maskOpacity_ != opacity) { maskOpacity_ = opacity; if (!editableVisible()) clearRegionSelection(); update(); } }
+    void setMaskVisible(bool keepout, bool speed) { if (showKeepout_ != keepout || showSpeed_ != speed) { showKeepout_ = keepout; showSpeed_ = speed; if (!editableVisible()) clearRegionSelection(); update(); } }
     void fit();
     void actualSize();
     void zoom(double factor);
@@ -51,6 +56,7 @@ signals:
     void fileDropped(const QString &path);
     void colorPicked(int gray);
     void editingChanged();
+    void regionSelectionChanged();
     void paintRequested();
     void cropChanged(QRect area);
     void geometryApplyRequested();
@@ -82,6 +88,7 @@ private:
     void finishStroke();
     void cancelStroke();
     void finishPolygon();
+    void selectRegion(QPoint point);
     bool prepareDraft();
     void restoreDraft();
     void updateShapePreview();
@@ -113,6 +120,9 @@ private:
     bool drawing_ = false, panning_ = false, space_ = false, inside_ = false, axes_ = true, filled_ = false;
     bool fitted_ = true;
     QImage draft_;
+    QRect regionSelection_;
+    QPoint regionAnchor_;
+    qsizetype regionPixels_ = 0;
     QRect draftArea_;
     qint64 draftSourceKey_ = 0;
     QTimer previewTimer_, draftIdleTimer_;

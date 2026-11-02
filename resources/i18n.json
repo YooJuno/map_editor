@@ -569,11 +569,6 @@
     "ja": "キーボードショートカット",
     "zh": "快捷键"
   },
-  "B  펜\nL  직선\nR  사각형\nG  채우기\nH  이동\nI  스포이드\nP  다각형\nT  회전\nC  자르기\nO  원점 이동\n\n1 / 2 / 3  흰색 / 검정 / 회색\n[ / ]  굵기 조절\nF  화면 맞춤\n0  100%\nEnter  회전·자르기·원점 적용\nEsc  그리는 중인 획·미리보기 취소\n\n휠  확대·축소\n가운데 버튼 또는 Space+드래그  이동\n\nCtrl (macOS Cmd)+O  열기\nCtrl/Cmd+S  저장\nCtrl/Cmd+Shift+S  다른 이름으로 저장\nCtrl/Cmd+Z  실행 취소\nCtrl/Cmd+Shift+Z  다시 실행": {
-    "en": "B  Pen\nL  Line\nR  Rectangle\nG  Fill\nH  Pan\nI  Eyedropper\nP  Polygon\nT  Rotate\nC  Crop\nO  Move origin\n\n1 / 2 / 3  White / Black / Gray\n[ / ]  Brush width\nF  Fit to view\n0  100%\nEnter  Apply rotation, crop or origin\nEsc  Cancel stroke or preview\n\nWheel  Zoom\nMiddle button or Space+drag  Pan\n\nCtrl (Cmd on macOS)+O  Open\nCtrl/Cmd+S  Save\nCtrl/Cmd+Shift+S  Save as\nCtrl/Cmd+Z  Undo\nCtrl/Cmd+Shift+Z  Redo",
-    "ja": "B  ペン\nL  直線\nR  四角形\nG  塗りつぶし\nH  移動\nI  スポイト\nP  多角形\nT  回転\nC  切り抜き\nO  原点移動\n\n1 / 2 / 3  白 / 黒 / グレー\n[ / ]  ブラシの太さ\nF  画面に合わせる\n0  100%\nEnter  回転・切り抜き・原点を適用\nEsc  描画・プレビューを取消\n\nホイール  拡大・縮小\n中央ボタンまたは Space+ドラッグ  移動\n\nCtrl (macOS は Cmd)+O  開く\nCtrl/Cmd+S  保存\nCtrl/Cmd+Shift+S  名前を付けて保存\nCtrl/Cmd+Z  元に戻す\nCtrl/Cmd+Shift+Z  やり直す",
-    "zh": "B  画笔\nL  直线\nR  矩形\nG  填充\nH  平移\nI  取色器\nP  多边形\nT  旋转\nC  裁剪\nO  移动原点\n\n1 / 2 / 3  白色 / 黑色 / 灰色\n[ / ]  笔刷宽度\nF  适应窗口\n0  100%\nEnter  应用旋转、裁剪或原点\nEsc  取消绘制或预览\n\n滚轮  缩放\n鼠标中键或 Space+拖动  平移\n\nCtrl (macOS 为 Cmd)+O  打开\nCtrl/Cmd+S  保存\nCtrl/Cmd+Shift+S  另存为\nCtrl/Cmd+Z  撤销\nCtrl/Cmd+Shift+Z  重做"
-  },
   "정보": {
     "en": "About",
     "ja": "このアプリについて",
@@ -1545,5 +1540,60 @@
     "en": "Current yaw: %1°\nNav2 requires yaw 0",
     "ja": "現在の Yaw: %1°\nNav2 用には Yaw 0 が必要",
     "zh": "当前 Yaw：%1°\n用于 Nav2 时需要 Yaw 为 0"
+  },
+  "구역 선택": {
+    "en": "Select region",
+    "ja": "区域選択",
+    "zh": "选择区域"
+  },
+  "구역 선택 (V) · 같은 값으로 연결된 구역을 선택합니다.": {
+    "en": "Select region (V) · Select a connected region with the same value.",
+    "ja": "区域選択 (V) · 同じ値でつながった区域を選択します。",
+    "zh": "选择区域 (V) · 选择数值相同的连通区域。"
+  },
+  "구역 선택 중…": {
+    "en": "Selecting region…",
+    "ja": "区域を選択中…",
+    "zh": "正在选择区域…"
+  },
+  "구역 삭제": {
+    "en": "Delete region",
+    "ja": "区域を削除",
+    "zh": "删除区域"
+  },
+  "선택 구역 삭제 · Delete / Backspace": {
+    "en": "Delete selected region · Delete / Backspace",
+    "ja": "選択した区域を削除 · Delete / Backspace",
+    "zh": "删除所选区域 · Delete / Backspace"
+  },
+  "선택 해제 · Esc": {
+    "en": "Deselect · Esc",
+    "ja": "選択を解除 · Esc",
+    "zh": "取消选择 · Esc"
+  },
+  "선택 해제": {
+    "en": "Deselect",
+    "ja": "選択を解除",
+    "zh": "取消选择"
+  },
+  "%1 px 선택 · Delete로 삭제": {
+    "en": "%1 px selected · Delete to remove",
+    "ja": "%1 px を選択 · Delete で削除",
+    "zh": "已选择 %1 像素 · 按 Delete 删除"
+  },
+  "지울 구역을 클릭하세요.": {
+    "en": "Click the region to remove.",
+    "ja": "削除する区域をクリックしてください。",
+    "zh": "点击要删除的区域。"
+  },
+  "B  펜\nL  직선\nR  사각형\nG  채우기\nH  이동\nI  스포이드\nP  다각형\nV  구역 선택 (마스크)\nT  회전\nC  자르기\nO  원점 이동\n\n1 / 2 / 3  흰색 / 검정 / 회색\n[ / ]  굵기 조절\nF  화면 맞춤\n0  100%\nEnter  회전·자르기·원점 적용\nDelete / Backspace  선택 구역 삭제\nEsc  그리는 중인 획·미리보기·선택 취소\n\n휠  확대·축소\n가운데 버튼 또는 Space+드래그  이동\n\nCtrl (macOS Cmd)+O  열기\nCtrl/Cmd+S  저장\nCtrl/Cmd+Shift+S  다른 이름으로 저장\nCtrl/Cmd+Z  실행 취소\nCtrl/Cmd+Shift+Z  다시 실행": {
+    "en": "B  Pen\nL  Line\nR  Rectangle\nG  Fill\nH  Pan\nI  Eyedropper\nP  Polygon\nV  Select region (mask)\nT  Rotate\nC  Crop\nO  Move origin\n\n1 / 2 / 3  White / Black / Gray\n[ / ]  Brush width\nF  Fit to view\n0  100%\nEnter  Apply rotation, crop or origin\nDelete / Backspace  Delete selected region\nEsc  Cancel stroke, preview or selection\n\nWheel  Zoom\nMiddle button or Space+drag  Pan\n\nCtrl (Cmd on macOS)+O  Open\nCtrl/Cmd+S  Save\nCtrl/Cmd+Shift+S  Save as\nCtrl/Cmd+Z  Undo\nCtrl/Cmd+Shift+Z  Redo",
+    "ja": "B  ペン\nL  直線\nR  四角形\nG  塗りつぶし\nH  移動\nI  スポイト\nP  多角形\nV  区域選択（マスク）\nT  回転\nC  切り抜き\nO  原点移動\n\n1 / 2 / 3  白 / 黒 / グレー\n[ / ]  ブラシの太さ\nF  画面に合わせる\n0  100%\nEnter  回転・切り抜き・原点を適用\nDelete / Backspace  選択した区域を削除\nEsc  描画・プレビュー・選択を取消\n\nホイール  拡大・縮小\n中央ボタンまたは Space+ドラッグ  移動\n\nCtrl (macOS は Cmd)+O  開く\nCtrl/Cmd+S  保存\nCtrl/Cmd+Shift+S  名前を付けて保存\nCtrl/Cmd+Z  元に戻す\nCtrl/Cmd+Shift+Z  やり直す",
+    "zh": "B  画笔\nL  直线\nR  矩形\nG  填充\nH  平移\nI  取色器\nP  多边形\nV  选择区域（掩码）\nT  旋转\nC  裁剪\nO  移动原点\n\n1 / 2 / 3  白色 / 黑色 / 灰色\n[ / ]  笔刷宽度\nF  适应窗口\n0  100%\nEnter  应用旋转、裁剪或原点\nDelete / Backspace  删除所选区域\nEsc  取消绘制、预览或选择\n\n滚轮  缩放\n鼠标中键或 Space+拖动  平移\n\nCtrl (macOS 为 Cmd)+O  打开\nCtrl/Cmd+S  保存\nCtrl/Cmd+Shift+S  另存为\nCtrl/Cmd+Z  撤销\nCtrl/Cmd+Shift+Z  重做"
+  },
+  "같은 값으로 맞닿은 부분은 하나의 구역입니다.\nEsc로 선택 해제 · Ctrl/Cmd+Z로 복원": {
+    "en": "Touching cells with the same value form one region.\nEsc to deselect · Ctrl/Cmd+Z to restore",
+    "ja": "同じ値で接する部分は一つの区域です。\nEsc で選択解除 · Ctrl/Cmd+Z で復元",
+    "zh": "数值相同且相邻的部分视为同一区域。\nEsc 取消选择 · Ctrl/Cmd+Z 恢复"
   }
 }
