@@ -1,0 +1,7 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "payloads", "fieldPath": "data", "indexes": [] },
+    { "collectionGroup": "maps", "fieldPath": "preview", "indexes": [] }
+  ]
+}

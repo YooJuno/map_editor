@@ -7,3 +7,6 @@ __pycache__/
 *.user
 .DS_Store
 Thumbs.db
+
+# Short-lived GitHub OIDC credentials
+gha-creds-*.json

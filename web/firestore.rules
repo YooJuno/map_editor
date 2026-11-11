@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    match /users/{uid}/maps/{mapId} {
+      function validMap() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['name', 'width', 'height', 'resolution', 'revision', 'previousRevision', 'chunks', 'bytes', 'preview', 'createdAt', 'updatedAt', 'trashed'])
+          && d.keys().hasAll(['name', 'width', 'height', 'resolution', 'revision', 'previousRevision', 'chunks', 'bytes', 'preview', 'createdAt', 'updatedAt', 'trashed'])
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 120
+          && d.width is int && d.width > 0 && d.height is int && d.height > 0 && d.width * d.height <= 33554432
+          && d.resolution is number && d.resolution > 0
+          && d.revision is string && d.revision.size() <= 64
+          && d.previousRevision is string && d.previousRevision.size() <= 64
+          && d.chunks is int && d.chunks > 0 && d.chunks <= 40
+          && d.bytes is int && d.bytes > 0 && d.bytes <= 20971520
+          && d.preview is string && d.preview.size() <= 100000
+          && d.trashed is bool && d.createdAt is timestamp && d.updatedAt == request.time;
+      }
+      allow read: if owner(uid);
+      allow create: if owner(uid) && validMap() && request.resource.data.createdAt == request.time;
+      allow update: if owner(uid) && validMap() && request.resource.data.createdAt == resource.data.createdAt;
+      // Deletion uses a recoverable trash flag. Clients cannot permanently purge data.
+      allow delete: if false;
+      match /payloads/{chunkId} {
+        allow read: if owner(uid);
+        allow create: if owner(uid)
+          && request.resource.data.keys().hasOnly(['revision', 'index', 'data'])
+          && request.resource.data.revision is string && request.resource.data.revision.size() <= 64
+          && request.resource.data.index is int && request.resource.data.index >= 0 && request.resource.data.index < 40
+          && chunkId == request.resource.data.revision + '_' + string(request.resource.data.index)
+          && request.resource.data.data is bytes && request.resource.data.data.size() <= 600000;
+        allow update: if false;
+        allow delete: if owner(uid)
+          && (!exists(/databases/$(database)/documents/users/$(uid)/maps/$(mapId))
+            || (resource.data.revision != get(/databases/$(database)/documents/users/$(uid)/maps/$(mapId)).data.revision
+              && resource.data.revision != get(/databases/$(database)/documents/users/$(uid)/maps/$(mapId)).data.previousRevision));
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.firebase/
+*-debug.log*
+.env.local
+coverage/
+*.tsbuildinfo

@@ -29,6 +29,11 @@ PGM 지도와 YAML을 함께 편집하고 Nav2 필터 마스크를 만드는 데
 
 마스크 설정과 단축키는 [사용 가이드](docs/usage.md)를 참고하세요.
 
+## 웹 버전
+
+[웹 앱 열기](https://map-editor-juno.web.app) · Google 로그인·내 지도 보관함 지원.
+실행과 Firebase 배포는 [웹 버전 문서](docs/web.md)를 참고하세요.
+
 ## 소스에서 실행
 
 Ubuntu 24.04 기준:
