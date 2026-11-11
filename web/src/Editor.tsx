@@ -422,17 +422,51 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
               >
                 <Pipette size={17} />
               </IconButton>
-              <input
-                className="brush-input"
-                type="number"
-                min={1}
-                max={512}
-                aria-label={t('size')}
-                title={t('size')}
-                value={size}
-                onChange={(e) => setSize(Math.max(1, Math.min(512, Number(e.target.value) || 1)))}
-              />
-              <span className="unit">px</span>
+              <div className="brush-control">
+                <span
+                  className="brush-preview"
+                  role="img"
+                  aria-label={`${t('size')} · ${size} px`}
+                  title={`${t('size')} · ${size} px`}
+                >
+                  <svg viewBox="0 0 48 28" aria-hidden="true">
+                    <line
+                      x1="12"
+                      y1="14"
+                      x2="36"
+                      y2="14"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeWidth={size <= 12 ? size : 12 + Math.log2(size / 12) * 2}
+                    />
+                  </svg>
+                </span>
+                <input
+                  className="brush-slider"
+                  type="range"
+                  min={1}
+                  max={512}
+                  step={1}
+                  aria-label={t('size')}
+                  title={`${t('size')} · ${size} px`}
+                  value={size}
+                  onChange={(e) => setSize(Number(e.target.value))}
+                />
+                <input
+                  className="brush-input"
+                  type="number"
+                  min={1}
+                  max={512}
+                  step={1}
+                  aria-label={t('size')}
+                  title={t('size')}
+                  value={size}
+                  onChange={(e) =>
+                    setSize(Math.max(1, Math.min(512, Math.round(Number(e.target.value) || 1))))
+                  }
+                />
+                <span className="unit">px</span>
+              </div>
             </>
           )}
           {points > 0 && (

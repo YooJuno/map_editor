@@ -227,18 +227,57 @@ p {
 .save-state.edited {
   color: var(--accent);
 }
-.language-switch {
+.language-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+.language-trigger {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: var(--muted);
-}
-.language-switch select {
+  gap: 6px;
   border: 0;
   background: transparent;
-  padding: 6px 3px;
+  padding: 7px 5px;
+  color: var(--muted);
   font-size: 12px;
-  max-width: 95px;
+}
+.language-options {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 45;
+  min-width: 148px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 10px 30px #0004;
+}
+.language-options button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  padding: 10px 11px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+.language-options button[aria-checked='true'] {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+.language-options button:hover,
+.language-options button:focus-visible {
+  background: var(--raised);
+  color: var(--text);
+  outline: none;
+}
+.language-options button svg {
+  color: var(--accent);
 }
 .account {
   display: flex;
@@ -721,6 +760,29 @@ summary::-webkit-details-marker {
 .swatch.selected {
   outline-color: var(--accent);
 }
+.brush-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.brush-preview {
+  display: flex;
+  align-items: center;
+  width: 48px;
+  height: 28px;
+  flex-shrink: 0;
+  color: var(--text);
+}
+.brush-preview svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.brush-control input[type='range'] {
+  width: 120px;
+  min-width: 60px;
+}
 .brush-input {
   width: 56px;
   height: 30px;
@@ -1131,12 +1193,12 @@ details[open] > summary > svg {
   .brand img {
     width: 25px;
   }
-  .language-switch svg,
+  .language-trigger > svg:first-child,
   .save-state {
     display: none;
   }
-  .language-switch select {
-    max-width: 70px;
+  .language-trigger {
+    gap: 4px;
     font-size: 11px;
   }
   .header-divider {
@@ -1223,6 +1285,12 @@ details[open] > summary > svg {
   }
   .brush-input {
     width: 43px;
+  }
+  .brush-control {
+    gap: 6px;
+  }
+  .brush-control input[type='range'] {
+    width: 62px;
   }
   .options-bar .spacer {
     min-width: 0;

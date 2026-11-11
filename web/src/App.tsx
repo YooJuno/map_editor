@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Download,
-  Globe2,
   LogOut,
   Map,
   Moon,
@@ -37,6 +36,7 @@ import {
   type CloudMap,
 } from './firebase';
 import { Editor, IconButton, type EditorHandle } from './Editor';
+import { LanguageMenu } from './LanguageMenu';
 import { layerBytes, safeName, type MapDoc, type NamedFile } from './map';
 import { translator, type Lang } from './i18n';
 import { job } from './jobs';
@@ -391,19 +391,7 @@ export default function App() {
             <span className="header-divider" />
           </>
         )}
-        <label className="language-switch" title="Language">
-          <Globe2 size={16} />
-          <select
-            aria-label="Language"
-            value={lang}
-            onChange={(e) => setLang(e.target.value as Lang)}
-          >
-            <option value="ko">한국어</option>
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-            <option value="zh">简体中文</option>
-          </select>
-        </label>
+        <LanguageMenu value={lang} onChange={setLang} />
         <IconButton
           title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
