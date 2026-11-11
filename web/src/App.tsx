@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Download,
-  FolderOpen,
   Globe2,
   LogOut,
   Map,
@@ -269,19 +268,6 @@ export default function App() {
       setUpload(false);
     });
   };
-  const sample = () => {
-    if (!leave()) return;
-    void run(async () => {
-      const files = await Promise.all(
-        ['pgm', 'yaml'].map(async (ext) => {
-          const response = await fetch(`/example.${ext}`);
-          if (!response.ok) throw Error('예제를 읽지 못했습니다.');
-          return { name: `office.${ext}`, bytes: new Uint8Array(await response.arrayBuffer()) };
-        }),
-      );
-      reset(await job<MapDoc>({ action: 'import', files }));
-    });
-  };
   const save = () => {
     if (!current || !(dirty || draft)) return;
     void run(async () => {
@@ -388,7 +374,7 @@ export default function App() {
         {current && (
           <>
             <IconButton title={t('upload')} disabled={busy} onClick={() => setUpload(true)}>
-              <FolderOpen size={18} />
+              <Upload size={18} />
             </IconButton>
             <IconButton title={`${t('download')} · ZIP`} disabled={busy} onClick={() => download()}>
               <Download size={18} />
@@ -525,12 +511,8 @@ export default function App() {
                   <small>{t('loginHint')}</small>
                   <div className="local-links">
                     <button onClick={() => setUpload(true)}>
-                      <FolderOpen size={15} />
-                      {t('openLocal')}
-                    </button>
-                    <button disabled={busy} onClick={sample}>
-                      {t('sample')}
-                      <ArrowUpRight size={14} />
+                      <Upload size={15} />
+                      {t('upload')}
                     </button>
                   </div>
                 </div>
@@ -587,10 +569,7 @@ export default function App() {
                         <p>{t('emptyHint')}</p>
                         <button className="primary" onClick={() => setUpload(true)}>
                           <Upload size={16} />
-                          {t('openLocal')}
-                        </button>
-                        <button className="text-button" disabled={busy} onClick={sample}>
-                          {t('sample')}
+                          {t('upload')}
                         </button>
                       </>
                     )}
@@ -711,7 +690,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-heading">
-              <h2 id="upload-title">{t('importTitle')}</h2>
+              <h2 id="upload-title">{t('upload')}</h2>
               <IconButton title={t('close')} disabled={busy} onClick={() => setUpload(false)}>
                 <X size={19} />
               </IconButton>
