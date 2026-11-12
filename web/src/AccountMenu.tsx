@@ -9,6 +9,7 @@ type Props = {
   theme: string;
   t: Translate;
   busy: boolean;
+  serviceAdmin?: boolean;
   onLang: (lang: Lang) => void;
   onTheme: (theme: 'dark' | 'light') => void;
   onLogin: () => void;
@@ -16,6 +17,7 @@ type Props = {
 };
 export function AccountMenu({
   user,
+  serviceAdmin,
   lang,
   theme,
   t,
@@ -76,6 +78,7 @@ export function AccountMenu({
             <div className="account-profile">
               <strong>{user.displayName || user.email}</strong>
               <span>{user.email}</span>
+              {serviceAdmin && <small className="account-admin-badge">{t('serviceAdmin')}</small>}
             </div>
           )}
           <LanguageMenu value={lang} onChange={onLang} />

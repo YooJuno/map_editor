@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 256 256">
   <title>Map Editor</title>
-  <desc>A white floor plan and blue pencil on a charcoal tile.</desc>
+  <desc>A folded map and a blue editing pencil on a charcoal tile.</desc>
   <rect x="8" y="8" width="240" height="240" rx="52" fill="#242930"/>
   <rect x="8.75" y="8.75" width="238.5" height="238.5" rx="51.25" fill="none" stroke="#4b5563" stroke-width="1.5"/>
-  <g fill="none" stroke="#e7ebf0" stroke-width="13" stroke-linecap="square" stroke-linejoin="round">
-    <path d="M58 58H194V194H58Z"/>
-    <path d="M117 58V128H58M117 128H158V194"/>
-  </g>
-  <path d="M127 188L192 123Q198 117 204 123L214 133Q220 139 214 145L149 210L120 218Z"
-        fill="#90afd2" stroke="#242930" stroke-width="11" stroke-linejoin="round"/>
-  <path d="M127 188L149 210L120 218Z" fill="#e7ebf0"/>
-  <path d="M124 208L130 215L120 218Z" fill="#242930"/>
-  <path d="M187 128L209 150" fill="none" stroke="#242930" stroke-width="6"/>
+  <path d="M47 67L101 47L155 67L209 47V189L155 209L101 189L47 209Z"
+        fill="#edf0f4" stroke="#edf0f4" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M101 47L155 67V209L101 189Z" fill="#c4cdd8"/>
+  <path d="M101 51V185M155 71V205" fill="none" stroke="#242930" stroke-opacity=".22" stroke-width="5"/>
+  <path d="M128 182L191 119Q197 113 203 119L218 134Q224 140 218 146L155 209L118 219Z"
+        fill="#89a8cd" stroke="#242930" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M128 182L155 209L118 219Z" fill="#edf0f4"/>
+  <path d="M123 205L132 214L118 219Z" fill="#242930"/>
+  <path d="M187 123L214 150" fill="none" stroke="#242930" stroke-width="6"/>
 </svg>

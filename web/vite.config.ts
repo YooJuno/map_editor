@@ -19,6 +19,6 @@ export default defineConfig({
     include: ['tests/**/*.test.{ts,tsx}'],
     exclude: process.env.FIRESTORE_EMULATOR_HOST
       ? []
-      : ['tests/rules.test.ts', 'tests/firebase.test.ts'],
+      : ['tests/rules.test.ts', 'tests/firebase.test.ts', 'tests/workspaces.test.ts'],
   },
 });

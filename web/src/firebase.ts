@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
+  getIdTokenResult,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -58,6 +59,13 @@ export async function login() {
 }
 export const finishLogin = () => getRedirectResult(auth);
 export const logout = () => signOut(auth);
+export type MapScope = { workspaceId: string; sessionId: string };
+export type CloudRef = { id: string; revision: string; workspaceId?: string };
+export async function refreshAdminRole() {
+  return (
+    !!auth.currentUser && (await getIdTokenResult(auth.currentUser, true)).claims.appAdmin === true
+  );
+}
 export type CloudMap = {
   id: string;
   name: string;
@@ -73,18 +81,24 @@ export type CloudMap = {
   updatedAt: Timestamp;
   trashed: boolean;
 };
-function maps() {
+export function mapCollection(workspaceId?: string) {
   if (!auth.currentUser) throw Error('Google 계정으로 로그인하세요.');
-  return collection(db, 'users', auth.currentUser.uid, 'maps');
+  return workspaceId
+    ? collection(db, 'workspaces', workspaceId, 'maps')
+    : collection(db, 'users', auth.currentUser.uid, 'maps');
 }
-export function watchMaps(update: (maps: CloudMap[]) => void, error: (e: Error) => void) {
+export function watchMaps(
+  update: (maps: CloudMap[]) => void,
+  error: (e: Error) => void,
+  workspaceId?: string,
+) {
   return onSnapshot(
-    query(maps(), orderBy('updatedAt', 'desc')),
+    query(mapCollection(workspaceId), orderBy('updatedAt', 'desc')),
     (snapshot) => update(snapshot.docs.map((d) => ({ ...d.data(), id: d.id }) as CloudMap)),
     error,
   );
 }
-async function network<T>(operation: Promise<T>): Promise<T> {
+export async function network<T>(operation: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   try {
     return await Promise.race([
@@ -105,10 +119,13 @@ async function network<T>(operation: Promise<T>): Promise<T> {
     clearTimeout(timer!);
   }
 }
-async function cleanRevision(mapId: string, revision: string) {
+async function cleanRevision(mapId: string, revision: string, scope?: MapScope) {
   if (!revision) return;
   const records = await getDocsFromServer(
-    query(collection(doc(maps(), mapId), 'payloads'), where('revision', '==', revision)),
+    query(
+      collection(doc(mapCollection(scope?.workspaceId), mapId), 'payloads'),
+      where('revision', '==', revision),
+    ),
   );
   const batch = writeBatch(db);
   records.docs.forEach((d) => batch.delete(d.ref));
@@ -117,9 +134,10 @@ async function cleanRevision(mapId: string, revision: string) {
 export async function saveMap(
   map: MapDoc,
   preview: string,
-  existing?: { id: string; revision: string },
-): Promise<{ id: string; revision: string }> {
-  const root = maps(),
+  existing?: CloudRef,
+  scope?: MapScope,
+): Promise<CloudRef> {
+  const root = mapCollection(scope?.workspaceId),
     uid = auth.currentUser!.uid;
   const payload = await job<Uint8Array>({ action: 'pack', doc: map });
   if (payload.length > MAX_CLOUD_BYTES)
@@ -140,6 +158,7 @@ export async function saveMap(
           revision,
           index: i,
           data: Bytes.fromUint8Array(payload.slice(i * chunkSize, (i + 1) * chunkSize)),
+          ...(scope ? { editorSession: scope.sessionId } : {}),
         });
       await network(batch.commit());
     }
@@ -150,7 +169,7 @@ export async function saveMap(
           const old = await transaction.get(ref),
             data = old.data();
           if (
-            existing
+            existing?.revision
               ? !old.exists() || data?.revision !== existing.revision || data?.trashed
               : old.exists()
           )
@@ -171,6 +190,7 @@ export async function saveMap(
             createdAt: data?.createdAt || serverTimestamp(),
             updatedAt: serverTimestamp(),
             trashed: false,
+            ...(scope ? { editorSession: scope.sessionId } : {}),
           });
         },
         { maxAttempts: 3 },
@@ -178,17 +198,18 @@ export async function saveMap(
     );
   } catch (error) {
     // A revision is visible only after the metadata transaction succeeds.
-    void cleanRevision(ref.id, revision).catch(() => {});
+    void cleanRevision(ref.id, revision, scope).catch(() => {});
     throw error;
   }
   // Keep one preceding revision. Cleanup failure never converts a successful save into an error.
-  if (obsolete) void cleanRevision(ref.id, obsolete).catch(() => {});
-  return { id: ref.id, revision };
+  if (obsolete) void cleanRevision(ref.id, obsolete, scope).catch(() => {});
+  return { id: ref.id, revision, ...(scope ? { workspaceId: scope.workspaceId } : {}) };
 }
 export async function loadMap(
   id: string,
-): Promise<{ map: MapDoc; cloud: { id: string; revision: string } }> {
-  const ref = doc(maps(), id);
+  workspaceId?: string,
+): Promise<{ map: MapDoc; cloud: CloudRef }> {
+  const ref = doc(mapCollection(workspaceId), id);
   for (let attempt = 0; attempt < 2; attempt++) {
     const entry = await network(getDocFromServer(ref)),
       meta = entry.data() as CloudMap | undefined;
@@ -214,17 +235,29 @@ export async function loadMap(
     if (offset !== payload.length) throw Error('지도 파일이 손상되었습니다.');
     const map = await job<MapDoc>({ action: 'unpack', bytes: payload });
     map.name = meta.name;
-    return { map, cloud: { id, revision: meta.revision } };
+    return { map, cloud: { id, revision: meta.revision, ...(workspaceId ? { workspaceId } : {}) } };
   }
   throw Error('지도를 읽지 못했습니다.');
 }
-export async function renameMap(id: string, name: string) {
+export async function renameMap(id: string, name: string, scope?: MapScope) {
   const trimmed = name.trim();
   if (!trimmed || trimmed.length > 120) throw Error('지도 이름은 1~120자로 입력하세요.');
-  await network(updateDoc(doc(maps(), id), { name: trimmed, updatedAt: serverTimestamp() }));
+  await network(
+    updateDoc(doc(mapCollection(scope?.workspaceId), id), {
+      name: trimmed,
+      updatedAt: serverTimestamp(),
+      ...(scope ? { editorSession: scope.sessionId } : {}),
+    }),
+  );
 }
-export const trashMap = (id: string, trashed: boolean) =>
-  network(updateDoc(doc(maps(), id), { trashed, updatedAt: serverTimestamp() }));
+export const trashMap = (id: string, trashed: boolean, scope?: MapScope) =>
+  network(
+    updateDoc(doc(mapCollection(scope?.workspaceId), id), {
+      trashed,
+      updatedAt: serverTimestamp(),
+      ...(scope ? { editorSession: scope.sessionId } : {}),
+    }),
+  );
 export function errorMessage(error: unknown) {
   const code = (error as { code?: string })?.code;
   const messages: Record<string, string> = {

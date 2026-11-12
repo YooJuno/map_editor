@@ -1,24 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import {
-  ArrowLeft,
-  ArrowUpRight,
-  Download,
-  Map,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-  Upload,
-  X,
-  RotateCcw,
-  LoaderCircle,
-  Save,
-  HardDrive,
-  ShieldOff,
-  Gauge,
-} from 'lucide-react';
+import { ArrowLeft, Download, LoaderCircle, LockKeyhole, Save, Upload, X } from 'lucide-react';
 import {
   auth,
   login,
@@ -30,10 +12,29 @@ import {
   renameMap,
   trashMap,
   errorMessage,
+  refreshAdminRole,
   type CloudMap,
+  type CloudRef,
 } from './firebase';
 import { Editor, IconButton, type EditorHandle } from './Editor';
 import { AccountMenu } from './AccountMenu';
+import { Library } from './Library';
+import { WorkspaceDialog, JoinWorkspaceDialog } from './WorkspaceDialog';
+import {
+  acquireLease,
+  releaseLease,
+  renewLease,
+  reserveMapId,
+  watchLeases,
+  watchWorkspaces,
+  canManage,
+  leaseActive,
+  withLease,
+  forceReleaseLease,
+  type Workspace,
+  type EditContext,
+  type EditLease,
+} from './workspaces';
 import { layerBytes, safeName, type MapDoc, type NamedFile } from './map';
 import { translator, type Lang } from './i18n';
 import { job } from './jobs';
@@ -76,11 +77,6 @@ function thumbnail(doc: MapDoc) {
   ctx.putImageData(out, 0, 0);
   return canvas.toDataURL('image/webp', 0.75);
 }
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KiB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-}
 function downloadBytes(bytes: Uint8Array, name: string) {
   const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'application/zip' }));
   const a = document.createElement('a');
@@ -96,68 +92,85 @@ function preference(key: string, fallback: string) {
     return fallback;
   }
 }
+
 export default function App() {
   const [lang, setLang] = useState<Lang>(() => {
     const value = preference('map-editor-language', 'ko');
     return ['ko', 'en', 'ja', 'zh'].includes(value) ? (value as Lang) : 'ko';
   });
-  const [theme, setTheme] = useState(() => preference('map-editor-theme', 'dark'));
-  const t = useMemo(() => translator(lang), [lang]);
+  const [theme, setTheme] = useState(() => preference('map-editor-theme', 'dark')),
+    t = useMemo(() => translator(lang), [lang]);
   const [user, setUser] = useState<User | null>(null),
     [authReady, setAuthReady] = useState(false),
-    [records, setRecords] = useState<CloudMap[]>([]),
+    [globalAdmin, setGlobalAdmin] = useState(false),
+    [roleReady, setRoleReady] = useState(false);
+  const [records, setRecords] = useState<CloudMap[]>([]),
     [listReady, setListReady] = useState(false),
-    [listError, setListError] = useState('');
+    [listError, setListError] = useState(''),
+    [reload, setReload] = useState(0);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]),
+    [workspaceId, setWorkspaceId] = useState<string>(),
+    [workspaceDialog, setWorkspaceDialog] = useState<'create' | 'manage' | 'trash' | null>(null);
   const [current, setCurrent] = useState<MapDoc | null>(null),
-    [cloud, setCloud] = useState<{ id: string; revision: string }>(),
+    [cloud, setCloud] = useState<CloudRef>(),
     [dirty, setDirty] = useState(false),
-    [draft, setDraft] = useState(false);
+    [draft, setDraft] = useState(false),
+    [nameDraft, setNameDraft] = useState<string | null>(null),
+    [session, setSession] = useState(0);
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<string>(),
+    [editContext, setEditContext] = useState<EditContext>(),
+    [leaseHeld, setLeaseHeld] = useState(false),
+    [leases, setLeases] = useState<EditLease[]>([]),
+    [clock, setClock] = useState(Date.now());
   const [busy, setBusy] = useState(false),
     [toast, setToast] = useState(''),
     [upload, setUpload] = useState(false),
     [trash, setTrash] = useState(false),
-    [search, setSearch] = useState(''),
-    [rename, setRename] = useState<{ id?: string; name: string } | null>(null);
-  const [online, setOnline] = useState(navigator.onLine),
-    [, setHistoryVersion] = useState(0),
-    [reload, setReload] = useState(0),
-    [session, setSession] = useState(0);
-  const [nameDraft, setNameDraft] = useState<string | null>(null);
-  const nameChanged = !!nameDraft?.trim() && nameDraft.trim() !== current?.name;
-  const currentRef = useRef<MapDoc | null>(null);
-  currentRef.current = current;
-  const editor = useRef<EditorHandle>(null),
-    input = useRef<HTMLInputElement>(null),
+    [rename, setRename] = useState<{ id: string; name: string } | null>(null),
+    [online, setOnline] = useState(navigator.onLine),
+    [joinLink, setJoinLink] = useState<string | null>(() =>
+      new URLSearchParams(location.search).get('workspace'),
+    );
+  const [, renderHistory] = useState(0),
+    currentRef = useRef<MapDoc | null>(null),
+    historyRef = useRef<{ past: MapDoc[]; future: MapDoc[] }>({ past: [], future: [] }),
+    previousWorkspaces = useRef<Workspace[]>([]),
+    owner = useRef<string | null>(null),
     busyRef = useRef(false),
-    history = useRef<{ past: MapDoc[]; future: MapDoc[] }>({ past: [], future: [] }),
-    owner = useRef<string | null>(null);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.lang = lang;
-    try {
-      localStorage.setItem('map-editor-theme', theme);
-      localStorage.setItem('map-editor-language', lang);
-    } catch {
-      /* Preferences are optional in private browsing. */
-    }
-  }, [theme, lang]);
-  useEffect(() => {
-    const timer = setTimeout(() => setToast(''), 9000);
-    return () => clearTimeout(timer);
-  }, [toast]);
+    editor = useRef<EditorHandle>(null),
+    input = useRef<HTMLInputElement>(null);
+  currentRef.current = current;
+  const selectedWorkspace = workspaces.find((w) => w.id === workspaceId && !w.deleted),
+    workspaceManager = canManage(selectedWorkspace, globalAdmin),
+    nameChanged = !!nameDraft?.trim() && nameDraft.trim() !== current?.name,
+    unsaved = dirty || draft || nameChanged,
+    readOnly = !!editingWorkspaceId && (!editContext || !leaseHeld || !online),
+    holder = leases.find((l) => l.id === cloud?.id && leaseActive(l, clock));
   const run = useCallback(async (task: () => Promise<void>) => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     try {
       await task();
-    } catch (error) {
-      setToast(errorMessage(error));
+    } catch (e) {
+      setToast(errorMessage(e));
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
   }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.lang = lang;
+    try {
+      localStorage.setItem('map-editor-theme', theme);
+      localStorage.setItem('map-editor-language', lang);
+    } catch {}
+  }, [theme, lang]);
+  useEffect(() => {
+    const timer = setTimeout(() => setToast(''), 9000);
+    return () => clearTimeout(timer);
+  }, [toast]);
   useEffect(() => {
     void finishLogin().catch((e) => setToast(errorMessage(e)));
     return onAuthStateChanged(auth, (next) => {
@@ -165,6 +178,7 @@ export default function App() {
         setCloud(undefined);
         setRecords([]);
         setDirty(true);
+        setEditContext(undefined);
       }
       owner.current = next?.uid || null;
       setUser(next);
@@ -172,21 +186,97 @@ export default function App() {
     });
   }, []);
   useEffect(() => {
+    let active = true;
+    setRoleReady(false);
+    setGlobalAdmin(false);
+    if (!user) {
+      setRoleReady(true);
+      setWorkspaceId(undefined);
+      setEditContext(undefined);
+      return;
+    }
+    void refreshAdminRole()
+      .then((value) => {
+        if (active) {
+          setGlobalAdmin(value);
+          setRoleReady(true);
+        }
+      })
+      .catch(() => {
+        if (active) setRoleReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.uid]);
+  useEffect(() => {
+    setWorkspaces([]);
+    previousWorkspaces.current = [];
+    if (!user || !roleReady) return;
+    return watchWorkspaces(
+      globalAdmin,
+      (next) => {
+        const previous = previousWorkspaces.current;
+        setWorkspaceId((old) =>
+          old && previous.some((w) => w.id === old) && !next.some((w) => w.id === old && !w.deleted)
+            ? undefined
+            : old,
+        );
+        previousWorkspaces.current = next;
+        setWorkspaces(next);
+      },
+      (e) => setToast(errorMessage(e)),
+    );
+  }, [user?.uid, roleReady, globalAdmin]);
+  useEffect(() => {
     setRecords([]);
     setListError('');
     setListReady(!user);
     if (!user) return;
     return watchMaps(
-      (maps) => {
-        setRecords(maps);
+      (items) => {
+        setRecords(items);
         setListReady(true);
       },
       (e) => {
         setListError(errorMessage(e));
         setListReady(true);
+        if (workspaceId) setLeaseHeld(false);
       },
+      workspaceId,
     );
-  }, [user, reload]);
+  }, [user?.uid, workspaceId, reload]);
+  useEffect(() => {
+    setLeases([]);
+    if (!workspaceId || !user) return;
+    return watchLeases(workspaceId, setLeases, () => setLeaseHeld(false));
+  }, [workspaceId, user?.uid]);
+  useEffect(() => {
+    if (!workspaceId && !editContext) return;
+    const timer = setInterval(() => setClock(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, [workspaceId, editContext]);
+  useEffect(() => {
+    const lease = leases.find((l) => l.id === editContext?.mapId);
+    setLeaseHeld(
+      !!editContext &&
+        online &&
+        leaseActive(lease, clock) &&
+        lease?.uid === user?.uid &&
+        lease?.sessionId === editContext.sessionId,
+    );
+  }, [leases, editContext, clock, online, user?.uid]);
+  useEffect(() => {
+    if (!editContext) return;
+    const context = editContext,
+      timer = setInterval(() => {
+        void renewLease(context).catch(() => setLeaseHeld(false));
+      }, 25000);
+    return () => {
+      clearInterval(timer);
+      void releaseLease(context).catch(() => {});
+    };
+  }, [editContext]);
   useEffect(() => {
     const handler = () => setOnline(navigator.onLine);
     window.addEventListener('online', handler);
@@ -197,76 +287,77 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    const before = (e: BeforeUnloadEvent) => {
-      if (current && (dirty || draft || nameChanged || busy)) {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (current && (unsaved || busy)) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
-    window.addEventListener('beforeunload', before);
-    return () => window.removeEventListener('beforeunload', before);
-  }, [dirty, draft, nameChanged, busy, current]);
-  useEffect(() => {
-    const outside = (event: PointerEvent) =>
-      document.querySelectorAll<HTMLDetailsElement>('details.card-menu[open]').forEach((menu) => {
-        if (!menu.contains(event.target as Node)) menu.open = false;
-      });
-    document.addEventListener('pointerdown', outside);
-    return () => document.removeEventListener('pointerdown', outside);
-  }, []);
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [current, unsaved, busy]);
   const commit = useCallback((next: MapDoc) => {
     const old = currentRef.current;
     if (old && old !== next) {
-      history.current.past.push(old);
-      history.current.future = [];
+      historyRef.current.past.push(old);
+      historyRef.current.future = [];
       const memory = () => {
         const seen = new Set<ArrayBufferLike>();
-        for (const d of [...history.current.past, next])
+        for (const d of [...historyRef.current.past, next])
           for (const layer of ['map', 'keepout', 'speed'] as const) {
-            const bytes = layerBytes(d, layer);
-            if (bytes) seen.add(bytes.buffer);
+            const b = layerBytes(d, layer);
+            if (b) seen.add(b.buffer);
           }
-        return [...seen].reduce((sum, bytes) => sum + bytes.byteLength, 0);
+        return [...seen].reduce((sum, b) => sum + b.byteLength, 0);
       };
       while (
-        history.current.past.length > 20 ||
-        (history.current.past.length && memory() > 96 * 1024 * 1024)
+        historyRef.current.past.length > 20 ||
+        (historyRef.current.past.length && memory() > 96 * 1024 * 1024)
       )
-        history.current.past.shift();
+        historyRef.current.past.shift();
     }
     currentRef.current = next;
     setCurrent(next);
     setDirty(true);
-    setHistoryVersion((v) => v + 1);
+    renderHistory((v) => v + 1);
   }, []);
-  const reset = (doc: MapDoc, saved?: { id: string; revision: string }) => {
-    currentRef.current = doc;
-    setCurrent(doc);
+  const reset = (map: MapDoc, saved?: CloudRef, context?: EditContext) => {
+    currentRef.current = map;
+    setCurrent(map);
+    setCloud(saved);
+    setDirty(!saved?.revision);
+    setDraft(false);
     setNameDraft(null);
     setSession((v) => v + 1);
-    setCloud(saved);
-    setDirty(!saved);
-    setDraft(false);
-    history.current = { past: [], future: [] };
-    setHistoryVersion((v) => v + 1);
+    setEditingWorkspaceId(saved?.workspaceId ?? workspaceId);
+    setEditContext(context);
+    setLeaseHeld(!!context);
+    historyRef.current = { past: [], future: [] };
+    renderHistory((v) => v + 1);
   };
   const undo = () => {
-    if (!current || busyRef.current || !history.current.past.length) return;
-    history.current.future.push(current);
-    setCurrent(history.current.past.pop()!);
+    if (!current || busyRef.current || readOnly || !historyRef.current.past.length) return;
+    historyRef.current.future.push(current);
+    setCurrent(historyRef.current.past.pop()!);
     setDirty(true);
-    setHistoryVersion((v) => v + 1);
+    renderHistory((v) => v + 1);
   };
   const redo = () => {
-    if (!current || busyRef.current || !history.current.future.length) return;
-    history.current.past.push(current);
-    setCurrent(history.current.future.pop()!);
+    if (!current || busyRef.current || readOnly || !historyRef.current.future.length) return;
+    historyRef.current.past.push(current);
+    setCurrent(historyRef.current.future.pop()!);
     setDirty(true);
-    setHistoryVersion((v) => v + 1);
+    renderHistory((v) => v + 1);
   };
-  const leave = () => {
-    if (current && (dirty || draft || nameChanged) && !confirm(t('leave'))) return false;
-    return true;
+  const leave = () => !current || !unsaved || confirm(t('leave'));
+  const closeMap = () => {
+    if (busy || !leave()) return;
+    setCurrent(null);
+    setDirty(false);
+    setDraft(false);
+    setNameDraft(null);
+    setEditContext(undefined);
+    setEditingWorkspaceId(undefined);
   };
   const openFiles = (files: FileList | File[]) => {
     if (!files.length || busyRef.current || !leave()) return;
@@ -277,74 +368,129 @@ export default function App() {
       const data: NamedFile[] = await Promise.all(
         selected.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })),
       );
-      reset(await job<MapDoc>({ action: 'import', files: data }));
+      const map = await job<MapDoc>({ action: 'import', files: data });
+      if (workspaceId) {
+        const id = reserveMapId(workspaceId),
+          lease = await acquireLease(workspaceId, id);
+        if (!lease.acquired) throw Error(t('editLocked'));
+        reset(map, { id, revision: '', workspaceId }, lease.context);
+      } else reset(map);
       setUpload(false);
     });
   };
-  const save = () => {
-    if (!current || !(dirty || draft || nameChanged)) return;
-    void run(async () => {
-      const desiredName = (nameDraft ?? current.name).trim() || current.name;
-      const prepared = await editor.current!.prepare();
-      const map = prepared.name === desiredName ? prepared : { ...prepared, name: desiredName };
-      if (map !== prepared) commit(map);
-      setNameDraft(null);
-      if (!auth.currentUser) await login();
-      const result = await saveMap(map, thumbnail(map), cloud);
-      setCloud(result);
-      setDirty(false);
-      setDraft(false);
-      setToast(t('saved'));
-    });
+  const persist = async () => {
+    if (!current || readOnly) throw Error(t('viewOnly'));
+    const desiredName = (nameDraft ?? current.name).trim() || current.name,
+      prepared = await editor.current!.prepare(),
+      map = prepared.name === desiredName ? prepared : { ...prepared, name: desiredName };
+    if (map !== prepared) commit(map);
+    setNameDraft(null);
+    if (!auth.currentUser) await login();
+    const result = await saveMap(map, thumbnail(map), cloud, editContext);
+    setCloud(result);
+    setDirty(false);
+    setDraft(false);
+    setToast(t('saved'));
   };
+  const save = () => {
+    if (current && unsaved && !readOnly) void run(persist);
+  };
+  const openRecord = (record: CloudMap) =>
+    void run(async () => {
+      const lease = workspaceId ? await acquireLease(workspaceId, record.id) : undefined;
+      try {
+        const result = await loadMap(record.id, workspaceId);
+        reset(result.map, result.cloud, lease?.acquired ? lease.context : undefined);
+      } catch (error) {
+        if (lease?.acquired) await releaseLease(lease.context).catch(() => {});
+        throw error;
+      }
+    });
   const download = (record?: CloudMap) =>
     void run(async () => {
-      const map = record ? (await loadMap(record.id)).map : await editor.current!.prepare();
-      const output = !record && nameDraft?.trim() ? { ...map, name: nameDraft.trim() } : map;
+      const map = record
+          ? (await loadMap(record.id, workspaceId)).map
+          : await editor.current!.prepare(),
+        output = !record && nameDraft?.trim() ? { ...map, name: nameDraft.trim() } : map;
       downloadBytes(await job<Uint8Array>({ action: 'pack', doc: output }), output.name);
     });
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && current) {
-        e.preventDefault();
-        if (!busyRef.current) save();
+  const editAgain = () =>
+    void run(async () => {
+      if (!editingWorkspaceId) return;
+      const id = cloud?.id || reserveMapId(editingWorkspaceId),
+        lease = await acquireLease(editingWorkspaceId, id);
+      if (!lease.acquired) throw Error(t('editLocked'));
+      if (cloud?.revision && !unsaved) {
+        const result = await loadMap(id, editingWorkspaceId);
+        reset(result.map, result.cloud, lease.context);
+      } else {
+        setCloud(cloud || { id, revision: '', workspaceId: editingWorkspaceId });
+        setEditContext(lease.context);
+        setLeaseHeld(true);
       }
-      if (e.key === 'Escape' && !busyRef.current) {
-        document.querySelectorAll<HTMLDetailsElement>('details.card-menu[open]').forEach((menu) => {
-          menu.open = false;
-          menu.querySelector<HTMLElement>('summary')?.focus();
-        });
-        setUpload(false);
-        setRename(null);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  });
-  const filtered = records.filter(
-    (r) => r.trashed === trash && r.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
-  );
+    });
+  const finishEditing = () =>
+    void run(async () => {
+      if (unsaved) await persist();
+      if (editContext) await releaseLease(editContext);
+      setEditContext(undefined);
+      setLeaseHeld(false);
+    });
+  const remove = (record: CloudMap, trashed: boolean) =>
+    void run(async () => {
+      if (workspaceId)
+        await withLease(workspaceId, record.id, (scope) => trashMap(record.id, trashed, scope));
+      else await trashMap(record.id, trashed);
+      setToast(t(trashed ? 'remove' : 'restore'));
+    });
   const signout = () => {
     if (!leave()) return;
     void run(async () => {
+      if (editContext) await releaseLease(editContext).catch(() => {});
+      setEditContext(undefined);
       await logout();
       setCurrent(null);
       setCloud(undefined);
       setDirty(false);
     });
   };
-  const drop = (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes('Files')) return;
-    e.preventDefault();
-    openFiles(e.dataTransfer.files);
+  const clearJoin = () => {
+    setJoinLink(null);
+    const url = new URL(location.href);
+    url.searchParams.delete('workspace');
+    window.history.replaceState(null, '', url);
   };
+  const joined = (id: string) => {
+    setWorkspaceId(id);
+    setTrash(false);
+    clearJoin();
+  };
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && current) {
+        e.preventDefault();
+        if (!busyRef.current && !upload && !rename && !workspaceDialog) save();
+      }
+      if (e.key === 'Escape' && !busyRef.current) {
+        setUpload(false);
+        setRename(null);
+        setWorkspaceDialog(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
   return (
     <div
       className="app"
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) e.preventDefault();
       }}
-      onDrop={drop}
+      onDrop={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        openFiles(e.dataTransfer.files);
+      }}
     >
       <header className="app-header">
         <a
@@ -352,11 +498,7 @@ export default function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            if (!busy && leave()) {
-              setCurrent(null);
-              setDirty(false);
-              setDraft(false);
-            }
+            closeMap();
           }}
         >
           <img src="/icon.svg" alt="" />
@@ -365,17 +507,7 @@ export default function App() {
         {current && (
           <>
             <span className="header-divider" />
-            <IconButton
-              title={t('back')}
-              disabled={busy}
-              onClick={() => {
-                if (leave()) {
-                  setCurrent(null);
-                  setDirty(false);
-                  setDraft(false);
-                }
-              }}
-            >
+            <IconButton title={t('back')} disabled={busy} onClick={closeMap}>
               <ArrowLeft size={17} />
             </IconButton>
             <input
@@ -383,32 +515,32 @@ export default function App() {
               aria-label={t('name')}
               title={t('name')}
               maxLength={120}
-              disabled={busy}
+              disabled={busy || readOnly}
               size={Math.max(8, Math.min(26, (nameDraft ?? current.name).length + 2))}
               value={nameDraft ?? current.name}
-              onChange={(event) => setNameDraft(event.target.value)}
-              onFocus={(event) => event.currentTarget.select()}
-              onBlur={(event) => {
-                const name = event.currentTarget.value.trim();
+              onChange={(e) => setNameDraft(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={(e) => {
+                const name = e.currentTarget.value.trim();
                 setNameDraft(null);
                 if (name && name !== current.name) commit({ ...current, name });
               }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  event.currentTarget.blur();
-                } else if (event.key === 'Escape') {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  event.currentTarget.value = current.name;
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.currentTarget.value = current.name;
                   setNameDraft(null);
-                  event.currentTarget.blur();
+                  e.currentTarget.blur();
                 }
               }}
             />
-            <span className={`save-state${dirty || draft || nameChanged ? ' edited' : ''}`}>
-              {!cloud ? t('local') : dirty || draft || nameChanged ? t('unsaved') : t('saved')}
+            <span className={`save-state${unsaved ? ' edited' : ''}`}>
+              {!cloud?.revision ? t('local') : unsaved ? t('unsaved') : t('saved')}
             </span>
           </>
         )}
@@ -425,7 +557,7 @@ export default function App() {
               className="primary save-button"
               aria-label={t('save')}
               title={!user ? t('loginSave') : t('save')}
-              disabled={busy || !(dirty || draft || nameChanged)}
+              disabled={busy || readOnly || !unsaved}
               onClick={save}
             >
               <Save size={16} />
@@ -435,10 +567,11 @@ export default function App() {
         )}
         <AccountMenu
           user={user}
+          serviceAdmin={globalAdmin}
           lang={lang}
           theme={theme}
           t={t}
-          busy={busy}
+          busy={busy || !authReady}
           onLang={setLang}
           onTheme={setTheme}
           onLogin={() => void run(login)}
@@ -447,244 +580,75 @@ export default function App() {
       </header>
       {!online && <div className="offline-banner">{t('offline')}</div>}
       {current ? (
-        <Editor
-          key={session}
-          ref={editor}
-          doc={current}
-          t={t}
-          disabled={busy}
-          canUndo={!!history.current.past.length}
-          canRedo={!!history.current.future.length}
-          onUndo={undo}
-          onRedo={redo}
-          onChange={commit}
-          onDraft={setDraft}
-          run={run}
-        />
-      ) : (
-        <div className="library">
-          <aside className="library-sidebar">
-            <div className="sidebar-heading">WORKSPACE</div>
-            <button
-              className={!trash ? 'nav-item active' : 'nav-item'}
-              onClick={() => setTrash(false)}
-            >
-              <Map size={18} />
-              {t('maps')}
-              <span>{records.filter((r) => !r.trashed).length}</span>
-            </button>
-            <button
-              className={trash ? 'nav-item active' : 'nav-item'}
-              onClick={() => setTrash(true)}
-            >
-              <Trash2 size={18} />
-              {t('trash')}
-            </button>
-            <div className="spacer" />
-            <a
-              className="desktop-link"
-              href="https://github.com/YooJuno/map_editor/releases/latest"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <HardDrive size={16} />
-              Desktop
-              <ArrowUpRight size={14} />
-            </a>
-          </aside>
-          <main className="library-main">
-            <div className="library-heading">
-              <div>
-                <h1>{t(trash ? 'trash' : 'maps')}</h1>
-                {trash && <p>{t('trashHint')}</p>}
-              </div>
-              <button className="primary" disabled={busy} onClick={() => setUpload(true)}>
-                <Plus size={17} />
-                {t('upload')}
+        <>
+          {editingWorkspaceId && (
+            <div className="edit-lease-banner">
+              <LockKeyhole size={14} />
+              <span>
+                {leaseHeld
+                  ? t('editing')
+                  : holder
+                    ? `${holder.name} · ${t('editing')}`
+                    : t('viewOnly')}
+              </span>
+              <div className="spacer" />
+              <button
+                className="small-button"
+                disabled={busy || !online || (!leaseHeld && !!holder)}
+                onClick={leaseHeld ? finishEditing : editAgain}
+              >
+                {t(leaseHeld ? 'endEditing' : 'beginEditing')}
               </button>
             </div>
-            {!user && authReady && (
-              <div className="signin-panel">
-                <div className="signin-copy">
-                  <div className="section-icon">
-                    <Map size={26} />
-                  </div>
-                  <h2>Map Editor</h2>
-                  <button className="google-button" disabled={busy} onClick={() => void run(login)}>
-                    <span className="google-mark">G</span>
-                    {t('login')}
-                  </button>
-                  <small>{t('loginHint')}</small>
-                  <div className="local-links">
-                    <button onClick={() => setUpload(true)}>
-                      <Upload size={15} />
-                      {t('upload')}
-                    </button>
-                  </div>
-                </div>
-                <div className="signin-preview">
-                  <img src="/preview.png" alt="PGM map preview" />
-                  <div className="preview-caption">
-                    <span>
-                      <ShieldOff size={14} />
-                      {t('keepout')}
-                    </span>
-                    <span>
-                      <Gauge size={14} />
-                      {t('speed')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-            {user && (
-              <>
-                <div className="library-tools">
-                  <label className="search">
-                    <Search size={17} />
-                    <input
-                      aria-label={t('search')}
-                      placeholder={t('search')}
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </label>
-                  <span className="muted">{filtered.length}</span>
-                </div>
-                {listError ? (
-                  <div className="error-panel">
-                    <p>{listError}</p>
-                    <button onClick={() => setReload((v) => v + 1)}>
-                      <RotateCcw size={16} />
-                      {t('redo')}
-                    </button>
-                  </div>
-                ) : !listReady ? (
-                  <div className="empty-state">
-                    <LoaderCircle className="spin" />
-                    {t('busy')}
-                  </div>
-                ) : !filtered.length ? (
-                  <div className="empty-state">
-                    <div className="empty-icon">
-                      {trash ? <Trash2 size={28} /> : <Map size={30} />}
-                    </div>
-                    <h2>{t(search ? 'noResults' : trash ? 'emptyTrash' : 'empty')}</h2>
-                    {!trash && !search && (
-                      <>
-                        <p>{t('emptyHint')}</p>
-                        <button className="primary" onClick={() => setUpload(true)}>
-                          <Upload size={16} />
-                          {t('upload')}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <div className="map-grid">
-                    {filtered.map((record) => (
-                      <article className="map-card" key={record.id}>
-                        <button
-                          className="map-preview"
-                          disabled={busy || trash}
-                          title={record.name}
-                          onClick={() =>
-                            void run(async () => {
-                              const result = await loadMap(record.id);
-                              reset(result.map, result.cloud);
-                            })
-                          }
-                        >
-                          <img src={record.preview} alt={record.name} />
-                          <span className="map-open-icon">
-                            <ArrowUpRight size={18} />
-                          </span>
-                        </button>
-                        <div className="map-card-body">
-                          <div className="map-card-title">
-                            <h2 title={record.name}>{record.name}</h2>
-                            <details
-                              className="card-menu"
-                              onToggle={(event) => {
-                                if (event.currentTarget.open)
-                                  document
-                                    .querySelectorAll<HTMLDetailsElement>('details.card-menu[open]')
-                                    .forEach((menu) => {
-                                      if (menu !== event.currentTarget) menu.open = false;
-                                    });
-                              }}
-                              onClick={(event) => {
-                                if ((event.target as Element).closest('button'))
-                                  event.currentTarget.open = false;
-                              }}
-                            >
-                              <summary aria-label="More">
-                                <MoreHorizontal size={19} />
-                              </summary>
-                              <div>
-                                {trash ? (
-                                  <button
-                                    disabled={busy}
-                                    onClick={() =>
-                                      void run(async () => {
-                                        await trashMap(record.id, false);
-                                        setToast(t('restore'));
-                                      })
-                                    }
-                                  >
-                                    <RotateCcw size={15} />
-                                    {t('restore')}
-                                  </button>
-                                ) : (
-                                  <>
-                                    <button
-                                      disabled={busy}
-                                      onClick={() =>
-                                        setRename({ id: record.id, name: record.name })
-                                      }
-                                    >
-                                      <Pencil size={15} />
-                                      {t('rename')}
-                                    </button>
-                                    <button disabled={busy} onClick={() => download(record)}>
-                                      <Download size={15} />
-                                      {t('download')}
-                                    </button>
-                                    <button
-                                      disabled={busy}
-                                      onClick={() =>
-                                        void run(async () => {
-                                          await trashMap(record.id, true);
-                                          setToast(t('remove'));
-                                        })
-                                      }
-                                    >
-                                      <Trash2 size={15} />
-                                      {t('remove')}
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </details>
-                          </div>
-                          <p>
-                            {record.width.toLocaleString()} × {record.height.toLocaleString()}
-                            <span>·</span>
-                            {record.resolution} m/px
-                          </p>
-                          <div className="map-card-footer">
-                            <time>{record.updatedAt?.toDate().toLocaleDateString(lang)}</time>
-                            <span title={t('fileSize')}>{formatBytes(record.bytes)}</span>
-                          </div>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </main>
-        </div>
+          )}
+          <Editor
+            key={session}
+            ref={editor}
+            doc={current}
+            t={t}
+            disabled={busy || readOnly}
+            canUndo={!!historyRef.current.past.length}
+            canRedo={!!historyRef.current.future.length}
+            onUndo={undo}
+            onRedo={redo}
+            onChange={commit}
+            onDraft={setDraft}
+            run={run}
+          />
+        </>
+      ) : (
+        <Library
+          user={user}
+          authReady={authReady}
+          globalAdmin={globalAdmin}
+          workspaceManager={workspaceManager}
+          workspaces={workspaces}
+          workspaceId={workspaceId}
+          records={records}
+          leases={leases}
+          clock={clock}
+          trash={trash}
+          loading={!listReady}
+          error={listError}
+          busy={busy}
+          t={t}
+          lang={lang}
+          onWorkspace={setWorkspaceId}
+          onTrash={setTrash}
+          onWorkspaceDialog={setWorkspaceDialog}
+          onRetry={() => setReload((v) => v + 1)}
+          onUpload={() => setUpload(true)}
+          onLogin={() => void run(login)}
+          onOpen={openRecord}
+          onRename={(record) => setRename({ id: record.id, name: record.name })}
+          onDownload={(record) => download(record)}
+          onRemove={remove}
+          onForceUnlock={(record) =>
+            void run(async () => {
+              if (workspaceId) await forceReleaseLease(workspaceId, record.id);
+            })
+          }
+        />
       )}
       <input
         ref={input}
@@ -738,17 +702,20 @@ export default function App() {
         >
           <form
             className="modal compact"
-            onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-label={t('rename')}
+            onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {
               e.preventDefault();
               const name = rename.name.trim();
               if (!name) return;
               void run(async () => {
-                if (rename.id) await renameMap(rename.id, name);
-                else if (current) commit({ ...current, name });
+                if (workspaceId)
+                  await withLease(workspaceId, rename.id, (scope) =>
+                    renameMap(rename.id, name, scope),
+                  );
+                else await renameMap(rename.id, name);
                 setRename(null);
               });
             }}
@@ -781,8 +748,38 @@ export default function App() {
           </form>
         </div>
       )}
+      {workspaceDialog && (
+        <WorkspaceDialog
+          mode={workspaceDialog}
+          workspace={workspaceDialog === 'manage' ? selectedWorkspace : undefined}
+          workspaces={workspaces}
+          globalAdmin={globalAdmin}
+          t={t}
+          busy={busy}
+          run={run}
+          onClose={() => setWorkspaceDialog(null)}
+          onCreated={(id) => {
+            setWorkspaceId(id);
+            setTrash(false);
+            setWorkspaceDialog(null);
+          }}
+        />
+      )}
+      {joinLink && (
+        <JoinWorkspaceDialog
+          linkId={joinLink}
+          t={t}
+          userReady={authReady && roleReady}
+          globalAdmin={globalAdmin}
+          busy={busy}
+          run={run}
+          onLogin={() => void run(login)}
+          onClose={clearJoin}
+          onJoined={joined}
+        />
+      )}
       {toast && (
-        <div role="status" className="toast">
+        <div className="toast" role="status">
           <span>{toast}</span>
           <IconButton title={t('close')} onClick={() => setToast('')}>
             <X size={16} />
@@ -791,7 +788,7 @@ export default function App() {
       )}
       {busy && (
         <div className="busy-indicator" role="status">
-          <LoaderCircle size={16} className="spin" />
+          <LoaderCircle className="spin" size={16} />
           {t('busy')}
         </div>
       )}

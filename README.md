@@ -1,50 +1,103 @@
 # Map Editor
 
-PGM 지도와 YAML을 함께 편집하고 Nav2 필터 마스크를 만드는 데스크톱 앱입니다.
+Edit PGM/YAML maps and Nav2 keepout or speed masks.
 
-![편집 화면](docs/screenshot.png)
+[Web app](https://map-editor-juno.web.app) · [Desktop downloads](https://github.com/YooJuno/map_editor/releases/latest)
 
-## 다운로드
+![Editor](docs/screenshot.png)
 
-[최신 버전 다운로드](https://github.com/YooJuno/map_editor/releases/latest)에서 OS에 맞는 파일을 받아 압축을 풀어 실행하세요. ROS 설치는 필요하지 않습니다.
+## Use
 
-| OS | 실행 파일 |
+1. Open a YAML/PGM pair on desktop, or upload the pair or a ZIP on the web.
+2. Choose a layer, then draw, fill, crop, rotate, or adjust the origin.
+3. Save with `Ctrl/Cmd+S`. On desktop, `Ctrl/Cmd+Shift+S` creates a new pair. On the web, download a ZIP for local use.
+
+- Use the eyedropper beside the colors to match the original gray.
+- Finish polygons with Enter, right-click, or the finish button. Esc cancels.
+- Select a mask region and press Delete to remove it.
+- Drag crop edges or corners; drag the origin center to move it and its axes to change yaw.
+- Dark/light themes and Korean, English, Japanese, and Simplified Chinese are available.
+
+### Masks
+
+Keepout and percentage speed masks are saved as separate PGM/YAML pairs (`mode: raw`).
+Values: **0** unrestricted, **100** keepout, **1–100** speed percentage, **255** unknown.
+Use Nav2 Filter Info type **0** for keepout or **1** for percentage speed, with base **0** and multiplier **1**.
+Standard Nav2 filters require **zero yaw**. The editor preserves the map's coordinates.
+On desktop, save modified masks before changing map geometry; on the web, transforms apply to every layer.
+
+### Shared workspaces (web)
+
+Sign in with Google to save maps. Create a workspace from the sidebar and share its link.
+Joining requires administrator approval unless that setting is disabled.
+Only one session can edit a shared map at a time; other sessions can view and download it.
+
+| Role | Permissions |
 | --- | --- |
-| Ubuntu 24.04 x64 | `MapEditor.sh` |
+| Member | Upload, rename, edit, download |
+| Workspace admin | Member permissions, manage members, delete/restore maps |
+| Service admin | Manage all shared workspaces, delete/restore workspaces, release edit locks |
+
+Personal maps remain private. Deleted maps and workspaces go to trash.
+Gmail invitations require a connected sender and a deployed mail backend; share links work independently.
+
+## Desktop
+
+Extract the download for your OS. Qt is bundled; ROS is not required.
+
+| Platform | Launch |
+| --- | --- |
+| Ubuntu 24.04 x64 | `./MapEditor.sh` |
 | Windows x64 | `bin/mapwright.exe` |
-| macOS (Intel / Apple Silicon) | `mapwright.app` |
+| macOS Intel / Apple Silicon | `mapwright.app` |
 
-## 주요 기능
+Packages are unsigned; macOS notarization and APT packages are not provided. Checksums are in `SHA256SUMS`.
 
-- 흰색·검정·회색 편집과 스포이드
-- 드래그로 회전·자르기·원점 조정
-- 진입 금지·속도 제한 마스크 생성, 구역별 삭제
-- 다크·라이트 테마, 한국어·영어·일본어·중국어 지원
-
-## 사용법
-
-1. YAML 또는 PGM 파일을 열거나 창에 끌어 놓습니다.
-2. 왼쪽에서 지도·마스크·좌표 작업을 선택해 편집합니다.
-3. `Ctrl/Cmd+S`로 저장하거나 `Ctrl/Cmd+Shift+S`로 새 YAML/PGM 쌍을 만듭니다.
-
-마스크 설정과 단축키는 [사용 가이드](docs/usage.md)를 참고하세요.
-
-## 웹 버전
-
-[웹 앱 열기](https://map-editor-juno.web.app) · Google 로그인·내 지도 보관함 지원.
-실행과 Firebase 배포는 [웹 버전 문서](docs/web.md)를 참고하세요.
-
-## 소스에서 실행
-
-Ubuntu 24.04 기준:
+Build with C++17, Qt **6.4+**, CMake **3.21+**, and yaml-cpp **0.8+** (fetched automatically if missing):
 
 ```bash
-sudo apt install git build-essential cmake qt6-base-dev libyaml-cpp-dev
-git clone https://github.com/YooJuno/map_editor.git
-cd map_editor
-./run.sh
+# Ubuntu
+sudo apt install build-essential cmake ninja-build qt6-base-dev libyaml-cpp-dev
+# macOS: brew install cmake ninja qt yaml-cpp
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
-Windows·macOS 빌드와 자동 배포는 [빌드·배포 문서](docs/build.md)를 참고하세요.
+Launch `./build/mapwright` on Linux, `build\mapwright.exe` on Windows, or `build/mapwright.app` on macOS.
+On Windows, use a Visual Studio C++ developer shell. Set `CMAKE_PREFIX_PATH` to your Qt SDK if needed.
+For bundled packages, configure with `-DMAPWRIGHT_DEPLOY_RUNTIME=ON` (Qt 6.7+) and run `cmake --install build --prefix <absolute-path>`.
 
-[MIT License](LICENSE) · [의존성 라이선스](THIRD_PARTY_NOTICES.md)
+## Web development
+
+Requires **Node 24.12+**; emulator tests also require **Java 21+**.
+
+```bash
+cd web
+npm ci
+npm run dev
+npm test
+npm run test:rules
+npm run build
+# Firebase project administrator login required:
+npm run firebase -- login
+npm run deploy
+```
+
+The configured project is `map-editor-juno` (Google Auth, Firestore, Hosting).
+For a different project, update `web/src/firebase.ts` and enable Google sign-in, authorized domains, and a Native Firestore database.
+For local authentication, authorize `localhost` / `127.0.0.1`, or run the Auth/Firestore emulators with `VITE_USE_EMULATORS=true`.
+
+Web changes on `main` deploy through GitHub Actions using Workload Identity Federation.
+Repository variables: `FIREBASE_WORKLOAD_IDENTITY_PROVIDER` and `FIREBASE_SERVICE_ACCOUNT_EMAIL`.
+Desktop builds run on all four platforms; matching `vX.Y.Z` tags publish releases after every build passes.
+Update the version in `CMakeLists.txt` before tagging.
+
+## Limits
+
+PGM P2/P5 with Maxval 255; up to **32 Mi pixels**. Web cloud saves allow **20 MiB** per ZIP.
+Web files are chunked in Firestore; usage follows Firebase quotas. Private maps are isolated by account.
+Desktop overwrites retain backups in `.mapwright-backups`; YAML/PGM replacement cannot be fully atomic across power loss.
+Qt/C++ and React/TypeScript currently use separate editing engines with compatible file formats.
+
+[MIT License](LICENSE) · [Third-party licenses](THIRD_PARTY_NOTICES.md)

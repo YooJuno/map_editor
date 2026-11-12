@@ -390,8 +390,9 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
     };
     const down = (e: PointerEvent) => {
       const p = latest.current;
-      if (p.disabled || e.button === 2) return;
+      if (e.button === 2) return;
       canvas.focus();
+      if (p.disabled && e.button !== 1 && !space && p.tool !== 'hand') return;
       const at = imagePoint(e),
         screen = screenPoint(e);
       canvas.setPointerCapture(e.pointerId);

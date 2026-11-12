@@ -1,41 +1,172 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function signed() { return request.auth != null; }
+    function globalAdmin() { return signed() && request.auth.token.get('appAdmin', false) == true; }
+    function owner(uid) { return signed() && request.auth.uid == uid; }
+    function workspace(wid) { return get(/databases/$(database)/documents/workspaces/$(wid)).data; }
+    function workspaceAfter(wid) { return getAfter(/databases/$(database)/documents/workspaces/$(wid)).data; }
+    function member(wid) { return globalAdmin() || (signed() && !workspace(wid).deleted && request.auth.uid in workspace(wid).memberIds); }
+    function manager(wid) { return globalAdmin() || (signed() && !workspace(wid).deleted && request.auth.uid in workspace(wid).adminIds); }
+    function managerAfter(wid) { return globalAdmin() || (signed() && request.auth.uid in workspaceAfter(wid).adminIds); }
+    function mapShape(d, shared) {
+      return d.keys().hasOnly(['name','width','height','resolution','revision','previousRevision','chunks','bytes','preview','createdAt','updatedAt','trashed','editorSession'])
+        && d.keys().hasAll(['name','width','height','resolution','revision','previousRevision','chunks','bytes','preview','createdAt','updatedAt','trashed'])
+        && (shared ? d.editorSession is string : !('editorSession' in d))
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.width is int && d.width > 0 && d.height is int && d.height > 0 && d.width*d.height <= 33554432
+        && d.resolution is number && d.resolution > 0
+        && d.revision is string && d.revision.size() <= 64 && d.previousRevision is string && d.previousRevision.size() <= 64
+        && d.chunks is int && d.chunks > 0 && d.chunks <= 40 && d.bytes is int && d.bytes > 0 && d.bytes <= 20971520
+        && d.preview is string && d.preview.size() <= 100000 && d.trashed is bool
+        && d.createdAt is timestamp && d.updatedAt == request.time;
+    }
+    function chunkShape(d, chunkId, shared) {
+      return d.keys().hasOnly(['revision','index','data','editorSession'])
+        && d.keys().hasAll(['revision','index','data'])
+        && (shared ? d.editorSession is string : !('editorSession' in d))
+        && d.revision is string && d.revision.size() <= 64
+        && d.index is int && d.index >= 0 && d.index < 40
+        && chunkId == d.revision + '_' + string(d.index)
+        && d.data is bytes && d.data.size() > 0 && d.data.size() <= 600000;
+    }
+    function held(wid, mapId, session) {
+      let lease = get(/databases/$(database)/documents/workspaces/$(wid)/locks/$(mapId)).data;
+      return member(wid) && !workspace(wid).deleted && lease.active
+        && lease.uid == request.auth.uid && lease.sessionId == session
+        && lease.updatedAt + duration.value(90,'s') > request.time;
+    }
     match /users/{uid}/maps/{mapId} {
-      function validMap() {
-        let d = request.resource.data;
-        return d.keys().hasOnly(['name', 'width', 'height', 'resolution', 'revision', 'previousRevision', 'chunks', 'bytes', 'preview', 'createdAt', 'updatedAt', 'trashed'])
-          && d.keys().hasAll(['name', 'width', 'height', 'resolution', 'revision', 'previousRevision', 'chunks', 'bytes', 'preview', 'createdAt', 'updatedAt', 'trashed'])
-          && d.name is string && d.name.size() > 0 && d.name.size() <= 120
-          && d.width is int && d.width > 0 && d.height is int && d.height > 0 && d.width * d.height <= 33554432
-          && d.resolution is number && d.resolution > 0
-          && d.revision is string && d.revision.size() <= 64
-          && d.previousRevision is string && d.previousRevision.size() <= 64
-          && d.chunks is int && d.chunks > 0 && d.chunks <= 40
-          && d.bytes is int && d.bytes > 0 && d.bytes <= 20971520
-          && d.preview is string && d.preview.size() <= 100000
-          && d.trashed is bool && d.createdAt is timestamp && d.updatedAt == request.time;
-      }
       allow read: if owner(uid);
-      allow create: if owner(uid) && validMap() && request.resource.data.createdAt == request.time;
-      allow update: if owner(uid) && validMap() && request.resource.data.createdAt == resource.data.createdAt;
-      // Deletion uses a recoverable trash flag. Clients cannot permanently purge data.
+      allow create: if owner(uid) && mapShape(request.resource.data,false) && request.resource.data.createdAt == request.time;
+      allow update: if owner(uid) && mapShape(request.resource.data,false) && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if false;
       match /payloads/{chunkId} {
         allow read: if owner(uid);
-        allow create: if owner(uid)
-          && request.resource.data.keys().hasOnly(['revision', 'index', 'data'])
-          && request.resource.data.revision is string && request.resource.data.revision.size() <= 64
-          && request.resource.data.index is int && request.resource.data.index >= 0 && request.resource.data.index < 40
-          && chunkId == request.resource.data.revision + '_' + string(request.resource.data.index)
-          && request.resource.data.data is bytes && request.resource.data.data.size() <= 600000;
+        allow create: if owner(uid) && chunkShape(request.resource.data,chunkId,false);
         allow update: if false;
-        allow delete: if owner(uid)
-          && (!exists(/databases/$(database)/documents/users/$(uid)/maps/$(mapId))
-            || (resource.data.revision != get(/databases/$(database)/documents/users/$(uid)/maps/$(mapId)).data.revision
-              && resource.data.revision != get(/databases/$(database)/documents/users/$(uid)/maps/$(mapId)).data.previousRevision));
+        allow delete: if owner(uid) && (!exists(/databases/$(database)/documents/users/$(uid)/maps/$(mapId))
+          || (resource.data.revision != get(/databases/$(database)/documents/users/$(uid)/maps/$(mapId)).data.revision
+          && resource.data.revision != get(/databases/$(database)/documents/users/$(uid)/maps/$(mapId)).data.previousRevision));
       }
+    }
+    match /workspaces/{wid} {
+      function validWorkspace() {
+        let d=request.resource.data;
+        return d.keys().hasOnly(['name','createdBy','memberIds','adminIds','requireApproval','linkId','deleted','createdAt','updatedAt'])
+          && d.name is string && d.name.size()>0 && d.name.size()<=120 && d.createdBy is string
+          && d.memberIds is list && d.memberIds.size()<=1000 && d.adminIds is list && d.adminIds.hasOnly(d.memberIds)
+          && (d.adminIds.size()>0 || globalAdmin()) && d.requireApproval is bool && d.linkId is string && d.linkId.size()<=64
+          && d.deleted is bool && d.createdAt is timestamp && d.updatedAt == request.time;
+      }
+      function joiningSelf() {
+        let d=request.resource.data;
+        let join=getAfter(/databases/$(database)/documents/workspaces/$(wid)/joinRequests/$(request.auth.uid)).data;
+        return signed() && !resource.data.deleted && !resource.data.requireApproval
+          && !(request.auth.uid in resource.data.memberIds)
+          && d.diff(resource.data).affectedKeys().hasOnly(['memberIds','updatedAt'])
+          && d.memberIds.hasAll(resource.data.memberIds) && d.memberIds.size()==resource.data.memberIds.size()+1
+          && request.auth.uid in d.memberIds && join.status=='approved' && join.linkId==resource.data.linkId;
+      }
+      allow read: if globalAdmin() || (signed() && !resource.data.deleted && request.auth.uid in resource.data.memberIds);
+      allow create: if signed() && validWorkspace() && request.resource.data.createdBy==request.auth.uid
+        && request.resource.data.memberIds==[request.auth.uid] && request.resource.data.adminIds==[request.auth.uid]
+        && request.resource.data.deleted==false && request.resource.data.createdAt==request.time;
+      allow update: if validWorkspace() && request.resource.data.createdBy==resource.data.createdBy
+        && request.resource.data.createdAt==resource.data.createdAt
+        && ((manager(wid) && (globalAdmin() || request.resource.data.deleted==resource.data.deleted)) || joiningSelf());
+      allow delete: if false;
+      match /members/{uid} {
+        function validMember() {
+          let d=request.resource.data;
+          return d.keys().hasOnly(['uid','name','email','role','joinedAt']) && d.uid==uid
+            && d.name is string && d.name.size()<=120 && d.email is string && d.email.size()<=254
+            && d.role in ['admin','editor'] && d.joinedAt is timestamp
+            && uid in workspaceAfter(wid).memberIds
+            && (d.role=='admin' ? uid in workspaceAfter(wid).adminIds : !(uid in workspaceAfter(wid).adminIds));
+        }
+        allow get: if owner(uid) || member(wid);
+        allow list: if member(wid);
+        allow create: if validMember() && request.resource.data.joinedAt==request.time
+          && (managerAfter(wid) || (owner(uid) && request.resource.data.role=='editor'
+            && request.auth.token.get('email_verified',false)==true
+            && request.resource.data.email==request.auth.token.email.lower()
+            && getAfter(/databases/$(database)/documents/workspaces/$(wid)/joinRequests/$(uid)).data.status=='approved'));
+        allow update: if manager(wid) && validMember() && request.resource.data.uid==resource.data.uid
+          && request.resource.data.email==resource.data.email && request.resource.data.joinedAt==resource.data.joinedAt;
+        allow delete: if manager(wid) && !(uid in workspaceAfter(wid).memberIds);
+      }
+      match /joinRequests/{uid} {
+        function validJoin() {
+          let d=request.resource.data;
+          let link=get(/databases/$(database)/documents/workspaceLinks/$(d.linkId)).data;
+          return owner(uid) && request.auth.token.get('email_verified',false)==true
+            && d.keys().hasOnly(['uid','name','email','linkId','status','requestedAt'])
+            && d.uid==uid && d.name is string && d.name.size()<=120
+            && d.email==request.auth.token.email.lower() && d.requestedAt==request.time
+            && link.enabled && link.workspaceId==wid && workspace(wid).linkId==d.linkId && !workspace(wid).deleted
+            && d.status==(workspace(wid).requireApproval?'pending':'approved');
+        }
+        allow get: if owner(uid) || manager(wid);
+        allow list: if manager(wid);
+        allow create: if validJoin() && !(request.auth.uid in workspace(wid).memberIds);
+        allow update: if (validJoin() && !(request.auth.uid in workspace(wid).memberIds))
+          || (manager(wid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+            && request.resource.data.status in ['approved','rejected']);
+        allow delete: if manager(wid);
+      }
+      match /locks/{mapId} {
+        function validLease() {
+          let d=request.resource.data;
+          return d.keys().hasOnly(['uid','sessionId','name','active','updatedAt'])
+            && d.uid is string && d.sessionId is string && d.sessionId.size()>0 && d.sessionId.size()<=64
+            && d.name is string && d.name.size()<=120 && d.active is bool && d.updatedAt==request.time;
+        }
+        allow read: if member(wid);
+        allow create: if member(wid) && !workspace(wid).deleted && validLease() && request.resource.data.uid==request.auth.uid && request.resource.data.active;
+        allow update: if member(wid) && !workspace(wid).deleted && validLease()
+          && ((request.resource.data.uid==request.auth.uid
+            && ((resource.data.uid==request.auth.uid && resource.data.sessionId==request.resource.data.sessionId)
+              || !resource.data.active || resource.data.updatedAt+duration.value(90,'s')<=request.time))
+            || (globalAdmin() && request.resource.data.active==false
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','updatedAt'])));
+        allow delete: if false;
+      }
+      match /maps/{mapId} {
+        allow read: if member(wid);
+        allow create: if mapShape(request.resource.data,true) && held(wid,mapId,request.resource.data.editorSession)
+          && request.resource.data.trashed==false
+          && request.resource.data.createdAt==request.time;
+        allow update: if mapShape(request.resource.data,true) && held(wid,mapId,request.resource.data.editorSession)
+          && request.resource.data.createdAt==resource.data.createdAt
+          && (request.resource.data.trashed==resource.data.trashed || manager(wid));
+        allow delete: if false;
+        match /payloads/{chunkId} {
+          allow read: if member(wid);
+          allow create: if chunkShape(request.resource.data,chunkId,true) && held(wid,mapId,request.resource.data.editorSession);
+          allow update: if false;
+          allow delete: if held(wid,mapId,get(/databases/$(database)/documents/workspaces/$(wid)/locks/$(mapId)).data.sessionId)
+            && (!exists(/databases/$(database)/documents/workspaces/$(wid)/maps/$(mapId))
+              || (resource.data.revision!=get(/databases/$(database)/documents/workspaces/$(wid)/maps/$(mapId)).data.revision
+                && resource.data.revision!=get(/databases/$(database)/documents/workspaces/$(wid)/maps/$(mapId)).data.previousRevision));
+        }
+      }
+    }
+    match /workspaceLinks/{linkId} {
+      function validLink() {
+        let d=request.resource.data;
+        return d.keys().hasOnly(['workspaceId','name','enabled','requireApproval','createdBy','createdAt'])
+          && d.workspaceId is string && d.name is string && d.name.size()<=120 && d.enabled is bool && d.requireApproval is bool
+          && d.createdBy is string && d.createdAt is timestamp
+          && (!d.enabled || (workspaceAfter(d.workspaceId).linkId==linkId && workspaceAfter(d.workspaceId).name==d.name
+            && workspaceAfter(d.workspaceId).requireApproval==d.requireApproval && !workspaceAfter(d.workspaceId).deleted));
+      }
+      allow get: if resource.data.enabled || manager(resource.data.workspaceId);
+      allow list: if false;
+      allow create: if validLink() && managerAfter(request.resource.data.workspaceId) && request.resource.data.createdAt==request.time;
+      allow update: if manager(resource.data.workspaceId) && validLink() && request.resource.data.workspaceId==resource.data.workspaceId
+        && request.resource.data.createdBy==resource.data.createdBy && request.resource.data.createdAt==resource.data.createdAt;
+      allow delete: if false;
     }
   }
 }

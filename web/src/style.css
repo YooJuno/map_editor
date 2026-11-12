@@ -1498,3 +1498,226 @@ details[open] > summary > svg {
     max-width: 110px;
   }
 }
+.library-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.library-heading h1 {
+  margin: 0;
+}
+.workspace-nav-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  padding: 21px 8px 7px 12px;
+}
+.workspace-nav-heading > span {
+  flex: 1;
+}
+.workspace-nav-heading .icon-button {
+  width: 25px;
+  height: 25px;
+}
+.workspace-nav-list {
+  overflow: auto;
+  max-height: calc(100dvh - 340px);
+  min-height: 0;
+}
+.workspace-nav-list .nav-item {
+  width: 100%;
+  font-size: 12px;
+  padding: 11px 12px;
+}
+.workspace-nav-list .nav-item svg {
+  flex-shrink: 0;
+}
+.workspace-nav-list .nav-item .workspace-nav-name {
+  flex: 1;
+  margin-left: 0;
+  text-align: left;
+  font-size: 12px;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace-trash-nav {
+  font-size: 10px;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+}
+.workspace-modal {
+  width: 600px;
+  max-height: 86dvh;
+  overflow: auto;
+}
+.workspace-dialog-body {
+  margin: 0 -8px;
+}
+.workspace-section {
+  padding: 18px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.workspace-section .form-field {
+  margin: 0 0 18px;
+}
+.workspace-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--muted);
+}
+.workspace-section-title h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+.workspace-section-title > span {
+  margin-left: auto;
+  font-size: 11px;
+}
+.workspace-section-title .check-row {
+  margin: 0 0 0 auto;
+  font-size: 11px;
+}
+.copy-link,
+.email-invite {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.copy-link input,
+.email-invite input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+.email-invite + .muted {
+  margin-top: 9px;
+}
+.workspace-rows {
+  display: flex;
+  flex-direction: column;
+}
+.workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+}
+.workspace-row > div {
+  min-width: 0;
+  flex: 1;
+}
+.workspace-row > span:first-child {
+  flex: 1;
+}
+.workspace-row strong {
+  display: block;
+  font-weight: 500;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-row small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-button {
+  display: flex;
+  gap: 3px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-size: 10px;
+}
+.member-role {
+  font-size: 10px;
+  color: var(--muted);
+}
+.workspace-danger {
+  padding: 22px 8px 0;
+}
+.workspace-danger button {
+  font-size: 11px;
+  background: transparent;
+  color: var(--muted);
+}
+.join-button {
+  margin-top: 22px;
+  width: 100%;
+}
+.edit-lease-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 18px;
+  min-height: 41px;
+  flex-shrink: 0;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 11px;
+}
+.edit-lease-banner .small-button {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent);
+}
+.map-lease-label {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  background: #161a23d9;
+  color: #d5ddeb;
+  border: 1px solid #47536a;
+  border-radius: 4px;
+  font-size: 10px;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+}
+@media (max-width: 800px) {
+  .workspace-nav-heading > span {
+    display: none;
+  }
+  .workspace-nav-heading {
+    justify-content: center;
+    padding: 18px 0 5px;
+  }
+  .workspace-nav-list .nav-item {
+    justify-content: center;
+  }
+  .workspace-nav-list .nav-item .workspace-nav-name {
+    display: none;
+  }
+  .workspace-trash-nav {
+    font-size: 0;
+    justify-content: center;
+  }
+  .workspace-trash-nav svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.account-admin-badge {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--accent);
+  font-size: 10px;
+}

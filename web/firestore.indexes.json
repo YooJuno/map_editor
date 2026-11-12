@@ -1,7 +1,34 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "workspaces",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "memberIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "deleted",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
   "fieldOverrides": [
-    { "collectionGroup": "payloads", "fieldPath": "data", "indexes": [] },
-    { "collectionGroup": "maps", "fieldPath": "preview", "indexes": [] }
+    {
+      "collectionGroup": "payloads",
+      "fieldPath": "data",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "maps",
+      "fieldPath": "preview",
+      "indexes": []
+    }
   ]
 }

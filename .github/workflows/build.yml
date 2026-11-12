@@ -123,17 +123,17 @@ jobs:
           sha256sum "${archives[@]}" > SHA256SUMS
           notes="$RUNNER_TEMP/release-notes.md"
           cat > "$notes" <<EOF
-          Assets에서 사용하는 운영체제에 맞는 파일을 내려받아 압축을 풀어 실행하세요.
+          Download the package for your OS, extract it, and launch the application.
 
-          | 환경 | 파일 | 실행 |
+          | Platform | Package | Launch |
           | --- | --- | --- |
           | Windows x64 | MapEditor-${MAPEDITOR_VERSION}-windows-x86_64.zip | bin/mapwright.exe |
           | Ubuntu 24.04 x64 | MapEditor-${MAPEDITOR_VERSION}-ubuntu-24.04-x86_64.tar.gz | ./MapEditor.sh |
           | Apple Silicon Mac | MapEditor-${MAPEDITOR_VERSION}-macos-arm64.tar.gz | mapwright.app |
           | Intel Mac | MapEditor-${MAPEDITOR_VERSION}-macos-x86_64.tar.gz | mapwright.app |
 
-          Qt 라이브러리와 예제 지도를 포함합니다. 배포 서명과 macOS notarization은 포함하지 않습니다.
-          파일 검증용 SHA-256 값은 SHA256SUMS에 있습니다.
+          Qt libraries and example maps are included. Packages are unsigned and not notarized.
+          Verify downloads with SHA256SUMS. See the README for usage.
           EOF
           state="$RUNNER_TEMP/existing-release.json"
           if gh release view "$RELEASE_TAG" --json isDraft,assets > "$state" 2>/dev/null; then

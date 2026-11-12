@@ -25,21 +25,21 @@ def main():
     if not executable.is_file():
         parser.error(f"installed application is missing: {executable}")
     if windows:
-        launch = "bin/mapwright.exe를 실행하세요."
+        launch = "Run bin/mapwright.exe."
     elif mac:
-        launch = "mapwright.app을 여세요."
+        launch = "Open mapwright.app."
     else:
         launcher = root / "MapEditor.sh"
         launcher.write_text('#!/usr/bin/env sh\nset -eu\n'
                             'mapeditor_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
                             'exec "$mapeditor_dir/bin/mapwright" "$@"\n', encoding="utf-8")
         launcher.chmod(0o755)
-        launch = "터미널에서 ./MapEditor.sh를 실행하세요."
+        launch = "Run ./MapEditor.sh in a terminal."
     (root / "START-HERE.txt").write_text(
         f"Map Editor {args.version}\n{args.platform}\n\n{launch}\n\n"
-        "사용법: share/mapwright/README.md\n"
-        "예제 지도: share/mapwright/examples/office.yaml\n"
-        "라이선스: share/mapwright/LICENSE, share/mapwright/licenses/\n",
+        "Guide: share/mapwright/README.md\n"
+        "Example: share/mapwright/examples/office.yaml\n"
+        "Licenses: share/mapwright/LICENSE, share/mapwright/licenses/\n",
         encoding="utf-8",
     )
     args.output.mkdir(parents=True, exist_ok=True)

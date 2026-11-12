@@ -18,6 +18,10 @@ their own licenses; the application license does not replace them.
   MIT License. Source: https://github.com/jbeder/yaml-cpp/tree/0.8.0 .
   A copy of its MIT license is in `licenses/yaml-cpp-LICENSE`.
 
-No browser engine, ROS installation, Python interpreter, telemetry, or network
-service is used by the application at runtime. CMake may fetch yaml-cpp at build
+The desktop application uses no browser engine, ROS installation, Python
+interpreter, telemetry, or network service at runtime. CMake may fetch yaml-cpp at build
 time when an installed >= 0.8 version is unavailable.
+
+The web application uses React (MIT), Firebase JavaScript SDK (Apache-2.0),
+fflate (MIT), yaml (ISC), and Lucide icons (ISC). Their notices are included in
+`web/public/THIRD_PARTY_NOTICES.txt`.
