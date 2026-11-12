@@ -308,3 +308,20 @@ describe('map duplication', () => {
     expect(args[3]).toEqual({ workspaceId: 'team', sessionId: 'copy-session' });
   });
 });
+
+
+it('cancels duplication if the signed-in account changes while loading the source', async () => {
+  const { auth } = await import('../src/firebase');
+  const original = auth.currentUser;
+  try {
+    render(<App />);
+    await screen.findByRole('button', { name: 'Office', exact: true });
+    fireEvent.click(screen.getByLabelText('More'));
+    fireEvent.click(screen.getByRole('button', {name: '복제', exact: true}));
+    Object.assign(auth, { currentUser: { uid: 'different-account' } });
+    await screen.findByText('로그인 계정이 바뀌었습니다. 다시 시도하세요.');
+    expect(f.save).not.toHaveBeenCalled();
+  } finally {
+    Object.assign(auth, { currentUser: original });
+  }
+});

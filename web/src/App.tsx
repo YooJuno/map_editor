@@ -494,8 +494,14 @@ export default function App() {
     });
   const duplicate = (record: CloudMap) =>
     void run(async () => {
+      const uid = auth.currentUser?.uid;
+      const checkAccount = () => {
+        if (!uid || auth.currentUser?.uid !== uid) throw Error(t('accountChanged'));
+      };
+      checkAccount();
       const source = await loadMap(record.id, workspaceId),
         names = new Set(records.map((r) => r.name));
+      checkAccount();
       let name = '',
         number = 1;
       do {
@@ -507,9 +513,10 @@ export default function App() {
         preview = thumbnail(copy);
       if (workspaceId) {
         const id = reserveMapId(workspaceId);
-        await withLease(workspaceId, id, (scope) =>
-          saveMap(copy, preview, { id, revision: '', workspaceId }, scope),
-        );
+        await withLease(workspaceId, id, (scope) => {
+          checkAccount();
+          return saveMap(copy, preview, { id, revision: '', workspaceId }, scope);
+        });
       } else await saveMap(copy, preview);
       setToast(t('duplicated'));
     });
