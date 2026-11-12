@@ -31,12 +31,13 @@ On desktop, save modified masks before changing map geometry; on the web, transf
 ### Shared workspaces (web)
 
 Sign in with Google to save maps. Create a workspace from the sidebar and share its link.
+Use a map's `⋯` menu to duplicate it, including its masks and settings.
 Joining requires administrator approval unless that setting is disabled.
 Only one session can edit a shared map at a time; other sessions can view and download it.
 
 | Role | Permissions |
 | --- | --- |
-| Member | Upload, rename, edit, download |
+| Member | Upload, duplicate, rename, edit, download |
 | Workspace admin | Member permissions, manage members, delete/restore maps |
 | Service admin | Manage all shared workspaces, delete/restore workspaces, release edit locks |
 

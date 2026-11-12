@@ -492,6 +492,27 @@ export default function App() {
         throw error;
       }
     });
+  const duplicate = (record: CloudMap) =>
+    void run(async () => {
+      const source = await loadMap(record.id, workspaceId),
+        names = new Set(records.map((r) => r.name));
+      let name = '',
+        number = 1;
+      do {
+        const suffix = ` (${t('copySuffix')}${number === 1 ? '' : ` ${number}`})`;
+        name = source.map.name.slice(0, 120 - suffix.length).trimEnd() + suffix;
+        number++;
+      } while (names.has(name));
+      const copy = { ...source.map, name },
+        preview = thumbnail(copy);
+      if (workspaceId) {
+        const id = reserveMapId(workspaceId);
+        await withLease(workspaceId, id, (scope) =>
+          saveMap(copy, preview, { id, revision: '', workspaceId }, scope),
+        );
+      } else await saveMap(copy, preview);
+      setToast(t('duplicated'));
+    });
   const download = (record?: CloudMap) =>
     void run(async () => {
       const map = record
@@ -753,6 +774,7 @@ export default function App() {
           onDesktop={showDesktop}
           onOpen={openRecord}
           onRename={(record) => setRename({ id: record.id, name: record.name })}
+          onDuplicate={duplicate}
           onDownload={(record) => download(record)}
           onRemove={remove}
           onForceUnlock={(record) =>

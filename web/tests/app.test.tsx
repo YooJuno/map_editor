@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { forwardRef, useImperativeHandle } from 'react';
 const f = vi.hoisted(() => ({
   user: {
@@ -14,6 +14,8 @@ const f = vi.hoisted(() => ({
     width: 2,
     height: 2,
     pixels: Uint8Array.of(0, 255, 205, 0),
+    keepout: Uint8Array.of(0, 100, 0, 0),
+    speed: Uint8Array.of(0, 0, 30, 0),
     meta: {
       resolution: 0.05,
       origin: [0, 0, 0],
@@ -24,6 +26,9 @@ const f = vi.hoisted(() => ({
     },
   },
   save: vi.fn(),
+  lease: vi.fn(),
+  reserve: vi.fn(() => 'new-map'),
+  extraNames: [] as string[],
   global: false,
   workspaces: [] as any[],
   leases: [] as any[],
@@ -57,6 +62,17 @@ vi.mock('../src/firebase', () => ({
         trashed: false,
         updatedAt: { toDate: () => new Date() },
       },
+      ...f.extraNames.map((name, i) => ({
+        id: `extra-${i}`,
+        name,
+        trashed: false,
+        width: 2,
+        height: 2,
+        resolution: 0.05,
+        bytes: 100,
+        preview: 'data:',
+        updatedAt: { toDate: () => new Date() },
+      })),
     ]);
     return () => {};
   },
@@ -80,6 +96,8 @@ vi.mock('../src/workspaces', async (importOriginal) => ({
     update(f.leases);
     return () => {};
   },
+  reserveMapId: (...args: any[]) => f.reserve(...args),
+  withLease: (...args: any[]) => f.lease(...args),
   acquireLease: async () => ({
     acquired: false,
     context: { workspaceId: 'team', mapId: 'map1', sessionId: 'new' },
@@ -107,6 +125,13 @@ beforeEach(() => {
   f.global = false;
   f.workspaces = [];
   f.leases = [];
+  f.extraNames = [];
+  f.reserve.mockClear();
+  f.lease
+    .mockReset()
+    .mockImplementation(async (workspaceId, mapId, action) =>
+      action({ workspaceId, sessionId: 'copy-session' }),
+    );
   f.save.mockReset().mockResolvedValue({ id: 'map1', revision: 'r2' });
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
     () =>
@@ -245,5 +270,41 @@ describe('tutorial practice isolation', () => {
     expect(screen.getByText('세 가지 색')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '이전' }));
     expect(screen.getByText('예제 지도')).toBeTruthy();
+  });
+});
+
+describe('map duplication', () => {
+  async function copy() {
+    await screen.findByRole('button', { name: 'Office', exact: true });
+    const menu = screen.getAllByLabelText('More')[0];
+    fireEvent.click(menu);
+    fireEvent.click(within(menu.parentElement!).getByRole('button', { name: '복제', exact: true }));
+    await waitFor(() => expect(f.save).toHaveBeenCalled());
+    expect((menu.parentElement as HTMLDetailsElement).open).toBe(false);
+    return f.save.mock.calls[0];
+  }
+  it('creates a separate map containing both masks and metadata without overwriting the original', async () => {
+    render(<App />);
+    const args = await copy();
+    expect(args[0]).toEqual({ ...f.map, name: 'Office (복사본)' });
+    expect(args[2]).toBeUndefined();
+    expect(f.map.name).toBe('Office');
+    expect(f.lease).not.toHaveBeenCalled();
+  });
+  it('numbers copies when a name is already used', async () => {
+    f.extraNames = ['Office (복사본)', 'Office (복사본 2)'];
+    render(<App />);
+    expect((await copy())[0].name).toBe('Office (복사본 3)');
+  });
+  it('lets workspace members create a copy under a new map lease', async () => {
+    f.workspaces = [
+      { id: 'team', name: 'Team', memberIds: ['alice', 'bob'], adminIds: ['bob'], deleted: false },
+    ];
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Team', exact: true }));
+    const args = await copy();
+    expect(f.lease.mock.calls[0].slice(0, 2)).toEqual(['team', 'new-map']);
+    expect(args[2]).toEqual({ id: 'new-map', revision: '', workspaceId: 'team' });
+    expect(args[3]).toEqual({ workspaceId: 'team', sessionId: 'copy-session' });
   });
 });

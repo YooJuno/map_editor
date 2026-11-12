@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ArrowUpRight,
+  CopyPlus,
   Download,
   HardDrive,
   LoaderCircle,
@@ -48,6 +49,7 @@ type Props = {
   onDesktop: () => void;
   onOpen: (map: CloudMap) => void;
   onRename: (map: CloudMap) => void;
+  onDuplicate: (map: CloudMap) => void;
   onDownload: (map: CloudMap) => void;
   onRemove: (map: CloudMap, trashed: boolean) => void;
   onForceUnlock: (map: CloudMap) => void;
@@ -321,6 +323,10 @@ export function Library(p: Props) {
                                   <button disabled={p.busy} onClick={() => p.onRename(record)}>
                                     <Pencil size={15} />
                                     {t('rename')}
+                                  </button>
+                                  <button disabled={p.busy} onClick={() => p.onDuplicate(record)}>
+                                    <CopyPlus size={15} />
+                                    {t('duplicate')}
                                   </button>
                                   <button disabled={p.busy} onClick={() => p.onDownload(record)}>
                                     <Download size={15} />
