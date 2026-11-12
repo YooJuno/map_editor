@@ -351,17 +351,19 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   });
   const world = position ? worldAt(position, displayDoc) : null;
   const hint =
-    tool === 'polygon'
-      ? t('polygonHint')
-      : tool === 'crop'
-        ? t('cropHint')
-        : tool === 'rotate'
-          ? t('rotateHint')
-          : tool === 'origin'
-            ? t('originHint')
-            : tool === 'select'
-              ? t('selectHint')
-              : '';
+    tool === 'line'
+      ? t('lineHint')
+      : tool === 'polygon'
+        ? t('polygonHint')
+        : tool === 'crop'
+          ? t('cropHint')
+          : tool === 'rotate'
+            ? t('rotateHint')
+            : tool === 'origin'
+              ? t('originHint')
+              : tool === 'select'
+                ? t('selectHint')
+                : '';
   return (
     <fieldset className="editor" disabled={disabled}>
       <aside className="workspace-rail" aria-label="Workspace">

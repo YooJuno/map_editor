@@ -1595,5 +1595,10 @@
     "en": "Touching cells with the same value form one region.\nEsc to deselect · Ctrl/Cmd+Z to restore",
     "ja": "同じ値で接する部分は一つの区域です。\nEsc で選択解除 · Ctrl/Cmd+Z で復元",
     "zh": "数值相同且相邻的部分视为同一区域。\nEsc 取消选择 · Ctrl/Cmd+Z 恢复"
+  },
+  "A점 클릭 → B점 클릭 · Esc 취소": {
+    "en": "Click A → click B · Esc to cancel",
+    "ja": "A点をクリック → B点をクリック · Escで取消",
+    "zh": "点击A点 → 点击B点 · Esc取消"
   }
 }

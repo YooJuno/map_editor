@@ -23,6 +23,7 @@ public:
     void setFilled(bool filled) { filled_ = filled; }
     void finishEditing();
     bool undoPolygonPoint();
+    bool cancelPendingLine();
     int polygonPointCount() const { return tool_ == Polygon && drawing_ ? int(polygon_.size()) : 0; }
     void cancelPolygon() { if (tool_ == Polygon && drawing_) cancelStroke(); }
     bool hasRegionSelection() const { return !regionSelection_.isEmpty(); }

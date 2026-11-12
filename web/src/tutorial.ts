@@ -95,7 +95,10 @@ const ko = [
     '스포이드',
     '지도에서 색을 클릭하면 실제 PGM 픽셀값을 가져옵니다. 원본의 회색이 기본 회색과 다를 때 사용하세요.',
   ],
-  ['직선', '시작점에서 끝점까지 드래그하세요. 선택한 색과 굵기로 직선을 그립니다.'],
+  [
+    '직선',
+    'A점을 클릭한 뒤 B점을 클릭하세요. 두 점 사이에 선이 그려집니다. 끝점을 정하기 전에 확대·축소하거나 Space+드래그로 이동할 수 있으며, Esc로 취소합니다.',
+  ],
   ['박스', '대각선 방향으로 드래그해 사각형을 만드세요. 내부를 선택한 색으로 채웁니다.'],
   [
     '영역',
@@ -185,7 +188,10 @@ const en = [
     'Eyedropper',
     'Click a map pixel to sample its actual PGM value. Use this when the original gray differs from the default.',
   ],
-  ['Line', 'Drag from the start to the endpoint. The line uses the selected color and width.'],
+  [
+    'Line',
+    'Click A, then click B to draw a line. You can zoom or use Space+drag to pan between clicks. Esc cancels the pending line.',
+  ],
   ['Box', 'Drag diagonally to create a rectangle filled with the selected color.'],
   [
     'Region',
@@ -275,7 +281,10 @@ const ja = [
     'スポイト',
     '画素をクリックすると実際のPGM値を取得します。元の灰色が標準色と異なる場合に使います。',
   ],
-  ['直線', '始点から終点へドラッグします。選択した色と太さで直線を描きます。'],
+  [
+    '直線',
+    'A点、B点の順にクリックして直線を描きます。途中でも拡大・縮小やSpace+ドラッグで移動できます。Escで中止します。',
+  ],
   ['四角形', '対角方向にドラッグすると、選択した色で塗られた四角形ができます。'],
   [
     '領域',
@@ -353,7 +362,7 @@ const zh = [
   ['画笔', '在地图上拖动即可绘制。选择白色可移除障碍物，将其改为可通行区域。'],
   ['粗细', '拖动滑块或输入px值。旁边的短线用于预览所选粗细。'],
   ['吸管', '点击地图像素以获取实际PGM值。原图灰色与默认值不同时可使用此工具。'],
-  ['直线', '从起点拖到终点，以所选颜色和粗细绘制直线。'],
+  ['直线', '依次点击A点和B点绘制直线。两次点击之间可缩放或用Space+拖动平移。Esc取消未完成的直线。'],
   ['矩形', '沿对角线拖动，创建由所选颜色填充的矩形。'],
   ['区域', '点击四个点后，用Enter、右键或完成按钮闭合。Backspace撤销最后一点，Esc取消。'],
   ['填充背景', '点击以填充具有相同像素值的连通区域。边界存在缺口时，填充可能扩散到外部。'],

@@ -14,6 +14,7 @@ Use the **?** button in the web app for a guided practice session with the bundl
 2. Choose a layer, then draw, fill, crop, rotate, or adjust the origin.
 3. Save with `Ctrl/Cmd+S`. On desktop, `Ctrl/Cmd+Shift+S` creates a new pair. On the web, download a ZIP for local use.
 
+- Draw a line by clicking its start and end points. Zoom or pan between clicks; Esc cancels.
 - Use the eyedropper beside the colors to match the original gray.
 - Finish polygons with Enter, right-click, or the finish button. Esc cancels.
 - Select a mask region and press Delete to remove it.

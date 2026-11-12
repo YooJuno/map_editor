@@ -777,6 +777,7 @@ void MainWindow::undoEdit() {
     if (busy_) return;
     try {
     if (geometryPending()) { resetGeometry(); return; }
+    if (canvas_->cancelPendingLine()) return;
     if (canvas_->undoPolygonPoint()) return;
     canvas_->finishEditing();
     if (activeLayer_ == 0 && !pending_.isEmpty()) revertMetadata();
@@ -1103,7 +1104,7 @@ void MainWindow::refresh() {
     documentTitle_->setToolTip(document->map().yamlPath);
     documentState_->setText(empty ? "" : geometryPending() || (workspaceMode_ == 5 && !pending_.isEmpty()) ? I18n::text("미리보기 · 적용 전") : activeChanged ? I18n::text("수정됨") : mask && !maskInUse(*document) ? I18n::text("구역 없음") : I18n::text("저장됨"));
     if (geometry) toolTitle_->setText(workspaceMode_ == 3 ? I18n::text("회전") : workspaceMode_ == 4 ? I18n::text("자르기") : I18n::text("원점 이동"));
-    toolContext_->setText(geometry ? (workspaceMode_ == 3 ? I18n::text("시계 방향이 +각도입니다.") : workspaceMode_ == 4 ? I18n::text("남길 영역을 드래그하세요.") : I18n::text("월드 좌표 (0, 0)의 위치를 클릭하거나 드래그하세요.")) : mask ? (activeLayer_ == 1 ? I18n::text("진입 금지 구역") : QString(I18n::text("최대 속도의 %1%")).arg(speedPercent_->value())) : "");
+    toolContext_->setText(geometry ? (workspaceMode_ == 3 ? I18n::text("시계 방향이 +각도입니다.") : workspaceMode_ == 4 ? I18n::text("남길 영역을 드래그하세요.") : I18n::text("월드 좌표 (0, 0)의 위치를 클릭하거나 드래그하세요.")) : currentTool_ == Canvas::Line ? I18n::text("A점 클릭 → B점 클릭 · Esc 취소") : mask ? (activeLayer_ == 1 ? I18n::text("진입 금지 구역") : QString(I18n::text("최대 속도의 %1%")).arg(speedPercent_->value())) : "");
     details_->setText(empty ? QString(I18n::text("지도를 열면 레이어와 좌표를\n여기에서 조정할 수 있습니다.")) : QString("%1 × %2 px\n%3 × %4 m%5").arg(doc_.image().width()).arg(doc_.image().height())
         .arg(doc_.image().width() * doc_.meta().resolution, 0, 'f', 2).arg(doc_.image().height() * doc_.meta().resolution, 0, 'f', 2)
         .arg(mask || document->map().hasYaml ? "" : I18n::text("\nYAML 없음 (저장 시 생성)")));

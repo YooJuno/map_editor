@@ -141,6 +141,9 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       space = false,
       drag: Drag | null = null,
       hover: Point | null = null,
+      lineStart: Point | null = null,
+      lineDoc: MapDoc | null = null,
+      lineLayer: Layer = 'map',
       points: Point[] = [],
       positionAt = 0;
     const camera: Camera = { x: 0, y: 0, zoom: 1 };
@@ -151,7 +154,19 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
     const request = () => {
       if (!frame) frame = requestAnimationFrame(draw);
     };
-    refresh.current = request;
+    refresh.current = () => {
+      const p = latest.current;
+      if (
+        lineStart &&
+        (p.doc !== lineDoc ||
+          p.layer !== lineLayer ||
+          p.tool !== 'line' ||
+          p.disabled ||
+          !canPaint())
+      )
+        clear();
+      else request();
+    };
     function cache(doc: MapDoc, layer: Layer, dirty?: Rect) {
       const source = layerBytes(doc, layer);
       if (!source) return null;
@@ -219,6 +234,8 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
     const clear = () => {
       if (drag?.scratch) caches.clear();
       drag = null;
+      lineStart = null;
+      lineDoc = null;
       points = [];
       latest.current.onPoints(0);
       request();
@@ -291,9 +308,11 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       }
       const preview = points.length
         ? [...points, ...(hover ? [hover] : [])]
-        : drag && (p.tool === 'line' || p.tool === 'rect')
-          ? [drag.start, drag.last]
-          : [];
+        : lineStart
+          ? [lineStart, hover || lineStart]
+          : drag && p.tool === 'rect'
+            ? [drag.start, drag.last]
+            : [];
       if (preview.length) {
         ctx.beginPath();
         ctx.moveTo(preview[0].x, preview[0].y);
@@ -306,7 +325,7 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
           ctx.fill();
         }
         ctx.stroke();
-        for (const q of points) {
+        for (const q of lineStart ? [lineStart] : points) {
           ctx.beginPath();
           ctx.arc(q.x, q.y, 3 / z, 0, Math.PI * 2);
           ctx.fillStyle = '#e5edf9';
@@ -390,11 +409,12 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
     };
     const down = (e: PointerEvent) => {
       const p = latest.current;
-      if (e.button === 2) return;
+      if (e.button !== 0 && e.button !== 1) return;
       canvas.focus();
       if (p.disabled && e.button !== 1 && !space && p.tool !== 'hand') return;
       const at = imagePoint(e),
         screen = screenPoint(e);
+      hover = at;
       canvas.setPointerCapture(e.pointerId);
       if (e.button === 1 || space || p.tool === 'hand')
         drag = { start: at, last: at, screen, mode: 'pan' };
@@ -456,6 +476,20 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
         else {
           points.push(at);
           p.onPoints(points.length);
+        }
+      } else if (p.tool === 'line') {
+        if (at.x < 0 || at.y < 0 || at.x >= p.doc.width || at.y >= p.doc.height) return;
+        if (!lineStart) {
+          lineStart = at;
+          lineDoc = p.doc;
+          lineLayer = p.layer;
+        } else {
+          const start = lineStart,
+            next = scratch();
+          lineStart = null;
+          lineDoc = null;
+          stroke(layerBytes(next, p.layer)!, next.width, next.height, start, at, p.size, p.value);
+          commitStroke(next);
         }
       } else {
         if (at.x < 0 || at.y < 0 || at.x >= p.doc.width || at.y >= p.doc.height) return;
@@ -550,6 +584,8 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
         }
         drag.last = at;
       }
+      // The cursor's image coordinate changes when the viewport is panned.
+      hover = imagePoint(e);
       const rotationHover = p.tool === 'origin' && originRotationHit(at, p.doc, camera.zoom);
       canvas.style.cursor =
         drag?.mode === 'pan' || drag?.mode === 'axis'
@@ -564,26 +600,17 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       request();
     };
     const up = (e: PointerEvent) => {
-      if (!drag) return;
+      if (!drag) {
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        return;
+      }
       // Include the final pointer coordinate even when a coalesced move was skipped.
       move(e);
       const p = latest.current,
         finished = drag!;
       drag = null;
       if (finished.scratch) commitStroke(finished.scratch);
-      else if (finished.mode === 'line') {
-        const next = scratch();
-        stroke(
-          layerBytes(next, p.layer)!,
-          next.width,
-          next.height,
-          finished.start,
-          finished.last,
-          p.size,
-          p.value,
-        );
-        commitStroke(next);
-      } else if (finished.mode === 'rect') {
+      else if (finished.mode === 'rect') {
         const r = rectOf(finished.start, finished.last);
         p.onShape([
           { x: r.x, y: r.y },
@@ -598,8 +625,20 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
       zoom(Math.exp(-e.deltaY * 0.0015), screenPoint(e));
+      hover = imagePoint(e);
     };
     const keydown = (e: KeyboardEvent) => {
+      if (
+        lineStart &&
+        (e.key === 'Escape' ||
+          e.key === 'Backspace' ||
+          ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        clear();
+        return;
+      }
       if (e.key === ' ') {
         space = true;
         e.preventDefault();
@@ -626,7 +665,8 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
     };
     const context = (e: MouseEvent) => {
       e.preventDefault();
-      finish();
+      if (lineStart) clear();
+      else finish();
     };
     const leave = () => {
       hover = null;

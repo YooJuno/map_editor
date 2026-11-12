@@ -175,7 +175,16 @@ void Canvas::setMaskLayers(Document *keepout, Document *speed) {
 bool Canvas::editableVisible() const {
     return (doc_ == base_ || maskOpacity_ > 0) && (doc_ != keepout_ || showKeepout_) && (doc_ != speed_ || showSpeed_);
 }
-void Canvas::finishEditing() { if (tool_ == Polygon && drawing_) finishPolygon(); else finishStroke(); stopGeometryDrag(); }
+void Canvas::finishEditing() {
+    if (tool_ == Line) cancelPendingLine();
+    else if (tool_ == Polygon && drawing_) finishPolygon();
+    else finishStroke();
+    stopGeometryDrag();
+}
+bool Canvas::cancelPendingLine() {
+    if (tool_ != Line || !drawing_) return false;
+    cancelStroke(); return true;
+}
 void Canvas::clearRegionSelection() {
     if (!hasRegionSelection()) return;
     if (draftSourceKey_ == doc_->image().cacheKey()) restoreDraft();
@@ -373,6 +382,7 @@ void Canvas::fit() {
     const auto size = displaySize();
     scale_ = qBound(0.005, qMin((width() - 96.) / size.width(), (height() - 96.) / size.height()), 64.);
     offset_ = QPointF((width() - size.width() * scale_) / 2, (height() - size.height() * scale_) / 2);
+    if (tool_ == Line && drawing_ && inside_) { last_ = pixelPoint(mouse_); if (!previewTimer_.isActive()) previewTimer_.start(); }
     emit zoomChanged(scale_); update();
 }
 void Canvas::actualSize() { if (!base_->empty()) zoomAt(1. / scale_, QPointF(width() / 2., height() / 2.)); }
@@ -383,6 +393,7 @@ void Canvas::zoomAt(double factor, QPointF anchor) {
     fitted_ = false;
     scale_ = qBound(0.005, scale_ * factor, 64.);
     offset_ = anchor - pixel * scale_;
+    if (tool_ == Line && drawing_ && inside_) { last_ = pixelPoint(mouse_); if (!previewTimer_.isActive()) previewTimer_.start(); }
     emit zoomChanged(scale_); update();
 }
 void Canvas::paintEvent(QPaintEvent *) {
@@ -513,6 +524,12 @@ void Canvas::paintEvent(QPaintEvent *) {
         p.setPen(QColor("#536174")); p.setBrush(QColor(30, 35, 42, 235)); p.drawRoundedRect(bubble, 6, 6);
         p.setPen(QColor("#e4eaf3")); p.drawText(bubble, Qt::AlignCenter, p.fontMetrics().elidedText(hint, Qt::ElideRight, hintWidth - 20));
     }
+    if (tool_ == Line && drawing_) {
+        const auto anchor = screenPoint(QPointF(start_) + QPointF(.5, .5));
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(QColor("#31455f"), 1.5)); p.setBrush(QColor("#e3edf9"));
+        p.drawEllipse(anchor, 4, 4);
+    }
     if (inside_ && !panning_ && tool_ == Pen && insideImage(mouse_)) {
         p.setRenderHint(QPainter::Antialiasing, true);
         const double r = qMax(2., brushSize_ * scale_ / 2.);
@@ -559,6 +576,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         if (polygon_.size() >= 3) finishPolygon();
         e->accept(); return;
     }
+    if (!editLocked_ && e->button() == Qt::RightButton && cancelPendingLine()) { e->accept(); return; }
     if (e->button() == Qt::MiddleButton || (e->button() == Qt::LeftButton && (space_ || tool_ == Hand || (rotationPreview_ && tool_ != Rotate)))) {
         stopGeometryDrag();
         panning_ = true; fitted_ = false; panStart_ = e->position(); setCursor(Qt::ClosedHandCursor); return;
@@ -599,6 +617,10 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         return;
     }
     if (!insideImage(e->position())) return;
+    if (tool_ == Line && drawing_) {
+        last_ = pixelPoint(e->position());
+        finishStroke(); return;
+    }
     if (tool_ == Picker) {
         const auto point = pixelPoint(e->position());
         emit colorPicked(doc_->empty() ? 0 : doc_->image().constScanLine(point.y())[point.x()]);
@@ -636,7 +658,13 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     if (base_->empty()) return;
     if (editLocked_) { if (panning_) { offset_ += e->position() - panStart_; panStart_ = e->position(); update(); } return; }
     if (!rotationPreview_) emit positionChanged(mapPoint(e->position()));
-    if (panning_) { offset_ += e->position() - panStart_; panStart_ = e->position(); }
+    if (panning_) {
+        offset_ += e->position() - panStart_; panStart_ = e->position();
+        if (tool_ == Line && drawing_) {
+            last_ = pixelPoint(e->position());
+            if (!previewTimer_.isActive()) previewTimer_.start();
+        }
+    }
     else if (rotatingImage_ || rotatingOrigin_) updateAngleDrag(e->position(), e->modifiers());
     else if (selectingCrop_) {
         auto point = pixelPoint(e->position());
@@ -693,11 +721,12 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     if (panning_ && (e->button() == Qt::MiddleButton || e->button() == Qt::LeftButton)) {
         panning_ = false; setCursor(tool_ == Hand || tool_ == Rotate || space_ ? Qt::OpenHandCursor : tool_ == SelectRegion ? Qt::ArrowCursor : Qt::CrossCursor);
     }
-    if (e->button() == Qt::LeftButton && drawing_ && tool_ != Polygon) { mouseMoveEvent(e); finishStroke(); }
+    if (e->button() == Qt::LeftButton && drawing_ && tool_ != Polygon && tool_ != Line) { mouseMoveEvent(e); finishStroke(); }
 }
 void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
     if (editLocked_) return;
-    if (tool_ == Polygon && e->button() == Qt::LeftButton && drawing_) finishPolygon();
+    if (tool_ == Line && e->button() == Qt::LeftButton) mousePressEvent(e);
+    else if (tool_ == Polygon && e->button() == Qt::LeftButton && drawing_) finishPolygon();
     else QWidget::mouseDoubleClickEvent(e);
 }
 void Canvas::finishPolygon() {
@@ -744,7 +773,7 @@ void Canvas::keyReleaseEvent(QKeyEvent *e) {
 }
 void Canvas::leaveEvent(QEvent *) { inside_ = false; if (drawing_ && tool_ == Polygon) updateShapePreview(); update(); }
 void Canvas::focusOutEvent(QFocusEvent *e) {
-    if (tool_ != Polygon && !editLocked_) finishStroke();
+    if (tool_ != Polygon && tool_ != Line && !editLocked_) finishStroke();
     panning_ = space_ = false; stopGeometryDrag();
     setCursor(tool_ == Hand || tool_ == Rotate ? Qt::OpenHandCursor : tool_ == SelectRegion ? Qt::ArrowCursor : Qt::CrossCursor);
     QWidget::focusOutEvent(e);

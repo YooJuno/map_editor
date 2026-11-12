@@ -402,6 +402,49 @@ private slots:
         window.findChild<QAction *>("undoAction")->trigger(); QVERIFY(doc->meta() == originalMeta); QCOMPARE(doc->image(), original);
         window.close();
     }
+    void lineUsesTwoClicksAndOneUndo_data() {
+        QTest::addColumn<int>("kind");
+        QTest::newRow("map") << 0; QTest::newRow("keepout") << 1; QTest::newRow("speed") << 2;
+    }
+    void lineUsesTwoClicksAndOneUndo() {
+        QFETCH(int, kind);
+        Document base, mask(nullptr, true); base.replace(reference(), false);
+        if (kind) mask.replace(Mask::create(base.map(), kind == 1 ? Mask::Keepout : Mask::SpeedPercent), false);
+        auto *doc = kind ? &mask : &base; const auto original = doc->image().copy();
+        Canvas canvas(&base); if (kind) { canvas.setMaskLayers(kind == 1 ? &mask : nullptr, kind == 2 ? &mask : nullptr); canvas.setDocument(&mask); }
+        canvas.resize(800, 600); canvas.show(); QCoreApplication::processEvents(); canvas.fit(); canvas.setTool(Canvas::Line); canvas.setBrushSize(3); canvas.setGray(kind == 1 ? 100 : kind == 2 ? 30 : 0);
+        const auto a = canvas.screenPoint({5.5, 7.5}), b = canvas.screenPoint({23.5, 17.5});
+        mouse(&canvas, QEvent::MouseButtonPress, a, Qt::LeftButton, Qt::LeftButton);
+        mouse(&canvas, QEvent::MouseMove, b, Qt::NoButton, Qt::LeftButton);
+        mouse(&canvas, QEvent::MouseButtonRelease, b, Qt::LeftButton, Qt::NoButton);
+        QTest::qWait(20); QVERIFY(canvas.isEditing()); QVERIFY(!doc->dirty()); QCOMPARE(doc->image(), original); QCOMPARE(doc->undo()->count(), 0);
+        QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, b.toPoint());
+        auto expected = original.copy(); Raster::stroke(expected, {5, 7}, {23, 17}, 3, kind == 1 ? 100 : kind == 2 ? 30 : 0);
+        QCOMPARE(doc->image(), expected); QVERIFY(!canvas.isEditing()); QCOMPARE(doc->undo()->count(), 1);
+        doc->undo()->undo(); QCOMPARE(doc->image(), original); doc->undo()->redo(); QCOMPARE(doc->image(), expected);
+        if (kind) QCOMPARE(base.image(), reference().image);
+    }
+    void lineStartSurvivesZoomAndPan() {
+        Document doc; doc.replace(reference(), false); const auto original = doc.image().copy();
+        Canvas canvas(&doc); canvas.resize(800, 600); canvas.show(); QCoreApplication::processEvents(); canvas.fit(); canvas.setTool(Canvas::Line); canvas.setBrushSize(1);
+        QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, canvas.screenPoint({5.5, 7.5}).toPoint());
+        canvas.zoom(1.15);
+        QTest::keyPress(&canvas, Qt::Key_Space); dragScreen(&canvas, {300, 300}, {330, 280}); QTest::keyRelease(&canvas, Qt::Key_Space);
+        QVERIFY(canvas.isEditing()); QCOMPARE(doc.image(), original);
+        QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, canvas.screenPoint({23.5, 17.5}).toPoint());
+        auto expected = original.copy(); Raster::stroke(expected, {5, 7}, {23, 17}, 1, 0); QCOMPARE(doc.image(), expected);
+    }
+    void unfinishedLineNeverCommitsImplicitly() {
+        Document doc; doc.replace(reference(), false); const auto original = doc.image().copy();
+        Canvas canvas(&doc); canvas.resize(800, 600); canvas.show(); QCoreApplication::processEvents(); canvas.fit(); canvas.setTool(Canvas::Line);
+        auto start = [&] { QTest::mouseClick(&canvas, Qt::LeftButton, Qt::NoModifier, canvas.screenPoint({5.5, 7.5}).toPoint()); QTest::mouseMove(&canvas, canvas.screenPoint({23.5, 17.5}).toPoint()); QTest::qWait(20); };
+        start(); QTest::keyClick(&canvas, Qt::Key_Escape); QVERIFY(!canvas.isEditing()); QCOMPARE(doc.image(), original);
+        start(); QTest::mouseClick(&canvas, Qt::RightButton); QVERIFY(!canvas.isEditing()); QCOMPARE(doc.image(), original);
+        start(); canvas.finishEditing(); QVERIFY(!canvas.isEditing()); QCOMPARE(doc.image(), original);
+        start(); canvas.setTool(Canvas::Pen); QVERIFY(!canvas.isEditing()); QCOMPARE(doc.image(), original); QCOMPARE(doc.undo()->count(), 0);
+        canvas.setTool(Canvas::Line); start(); QFocusEvent lost(QEvent::FocusOut); QCoreApplication::sendEvent(&canvas, &lost);
+        QVERIFY(canvas.isEditing()); QCOMPARE(doc.image(), original); QVERIFY(canvas.cancelPendingLine()); QVERIFY(!canvas.isEditing());
+    }
     void cropEdgesResizeOneAxis_data() {
         QTest::addColumn<QPointF>("from"); QTest::addColumn<QPointF>("to");
         QTest::addColumn<QRect>("expected"); QTest::addColumn<int>("cursor");
