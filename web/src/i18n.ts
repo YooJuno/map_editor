@@ -34,13 +34,6 @@ const ko = {
   endEditing: '편집 종료',
   editLocked: '다른 사람이 편집 중입니다.',
   forceUnlock: '편집 잠금 해제',
-  inviteEmail: '이메일로 초대',
-  invite: '초대',
-  composeInvite: 'Gmail에서 열기',
-  inviteSubject: 'Map Editor 초대',
-  inviteMessage:
-    '{name} 워크스페이스에 초대합니다.\n\n{url}\n\nGoogle 계정으로 로그인해 참여할 수 있습니다.',
-
   noRequests: '대기 중인 요청이 없습니다.',
   renewLink: '새 링크 발급',
   trash: '휴지통',
@@ -155,12 +148,6 @@ const en: Record<Key, string> = {
   endEditing: 'Finish editing',
   editLocked: 'Someone else is editing this map.',
   forceUnlock: 'Release editing lock',
-  inviteEmail: 'Invite by email',
-  invite: 'Invite',
-  composeInvite: 'Open in Gmail',
-  inviteSubject: 'Map Editor invitation',
-  inviteMessage: 'You are invited to {name}.\n\n{url}\n\nSign in with your Google account to join.',
-
   noRequests: 'No pending requests.',
   renewLink: 'Generate a new link',
   trash: 'Trash',
@@ -275,13 +262,6 @@ const ja: Record<Key, string> = {
   endEditing: '編集を終了',
   editLocked: 'ほかのメンバーが編集中です。',
   forceUnlock: '編集ロックを解除',
-  inviteEmail: 'メールで招待',
-  invite: '招待',
-  composeInvite: 'Gmailで開く',
-  inviteSubject: 'Map Editorへの招待',
-  inviteMessage:
-    '{name}ワークスペースに招待します。\n\n{url}\n\nGoogleアカウントでログインして参加できます。',
-
   noRequests: '保留中のリクエストはありません。',
   renewLink: 'リンクを再発行',
   trash: 'ゴミ箱',
@@ -395,12 +375,6 @@ const zh: Record<Key, string> = {
   endEditing: '结束编辑',
   editLocked: '其他成员正在编辑此地图。',
   forceUnlock: '解除编辑锁定',
-  inviteEmail: '通过邮件邀请',
-  invite: '邀请',
-  composeInvite: '在Gmail中打开',
-  inviteSubject: 'Map Editor邀请',
-  inviteMessage: '邀请您加入{name}工作区。\n\n{url}\n\n请使用Google账号登录并加入。',
-
   noRequests: '暂无待处理申请。',
   renewLink: '生成新链接',
   trash: '回收站',

@@ -41,7 +41,6 @@ Only one session can edit a shared map at a time; other sessions can view and do
 | Service admin | Manage all shared workspaces, delete/restore workspaces, release edit locks |
 
 Personal maps remain private. Deleted maps and workspaces go to trash.
-Email invitations open Gmail with the join link filled in; the inviting administrator sends the message. No paid mail backend is required.
 
 ## Desktop
 

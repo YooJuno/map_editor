@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, Link2, Plus, Shield, Trash2, UserPlus, X } from 'lucide-react';
+import { Check, Copy, Link2, Plus, Shield, Trash2, X } from 'lucide-react';
 import { IconButton } from './Editor';
 import type { Translate } from './i18n';
 import {
@@ -23,7 +23,6 @@ import {
 import { auth } from './firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import { gmailInviteUrl } from './mail';
 type Runner = (task: () => Promise<void>) => Promise<void>;
 type Props = {
   mode: 'create' | 'manage' | 'trash';
@@ -53,7 +52,6 @@ export function WorkspaceDialog({
     [enabled, setEnabled] = useState(true),
     [members, setMembers] = useState<Member[]>([]),
     [requests, setRequests] = useState<JoinRequest[]>([]),
-    [email, setEmail] = useState(''),
     [copied, setCopied] = useState(false),
     [error, setError] = useState('');
   const manage = canManage(workspace, globalAdmin);
@@ -265,44 +263,6 @@ export function WorkspaceDialog({
                 </button>
               )}
             </section>
-            {manage && (
-              <section className="workspace-section">
-                <div className="workspace-section-title">
-                  <UserPlus size={16} />
-                  <h3>{t('inviteEmail')}</h3>
-                </div>
-                <form
-                  className="email-invite"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!link?.enabled) return;
-                    const url = gmailInviteUrl(
-                      email,
-                      workspace.name,
-                      shareUrl(link.id),
-                      auth.currentUser?.email || null,
-                      t('inviteSubject'),
-                      t('inviteMessage'),
-                    );
-                    window.open(url, '_blank', 'noopener,noreferrer');
-                  }}
-                >
-                  <input
-                    type="email"
-                    required
-                    maxLength={254}
-                    disabled={busy || !link?.enabled}
-                    aria-label={t('inviteEmail')}
-                    placeholder="name@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                  <button disabled={busy || !email.trim() || !link?.enabled}>
-                    {t('composeInvite')}
-                  </button>
-                </form>
-              </section>
-            )}
             {manage && (
               <section className="workspace-section">
                 <div className="workspace-section-title">

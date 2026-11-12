@@ -1583,20 +1583,15 @@ details[open] > summary > svg {
   margin: 0 0 0 auto;
   font-size: 11px;
 }
-.copy-link,
-.email-invite {
+.copy-link {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.copy-link input,
-.email-invite input {
+.copy-link input {
   flex: 1;
   min-width: 0;
   font-size: 12px;
-}
-.email-invite + .muted {
-  margin-top: 9px;
 }
 .workspace-rows {
   display: flex;
