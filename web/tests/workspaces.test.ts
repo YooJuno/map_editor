@@ -322,3 +322,13 @@ describe('editing leases and map permissions', () => {
     await assertFails(getDocsFromServer(collection(backend.db, 'workspaces')));
   });
 });
+
+it('grants exactly one lease when sessions race to open a map', async () => {
+  const id = await ws.createWorkspace('Team'),
+    mapId = ws.reserveMapId(id);
+  const results = await Promise.all([
+    ws.acquireLease(id, mapId, 'first'),
+    ws.acquireLease(id, mapId, 'second'),
+  ]);
+  expect(results.filter((r) => r.acquired)).toHaveLength(1);
+});

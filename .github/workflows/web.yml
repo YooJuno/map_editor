@@ -36,6 +36,8 @@ jobs:
       - run: npm test
       - run: npm run test:rules
       - run: npm run build
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: map-editor-web

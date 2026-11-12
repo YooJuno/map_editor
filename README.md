@@ -2,11 +2,13 @@
 
 Edit PGM/YAML maps and Nav2 keepout or speed masks.
 
-[Web app](https://map-editor-juno.web.app) · [Desktop downloads](https://github.com/YooJuno/map_editor/releases/latest)
+[Web app](https://map-editor-juno.web.app) · [Desktop downloads](https://map-editor-juno.web.app/desktop)
 
 ![Editor](docs/screenshot.png)
 
 ## Use
+
+Use the **?** button in the web app for a guided practice session with the bundled example map.
 
 1. Open a YAML/PGM pair on desktop, or upload the pair or a ZIP on the web.
 2. Choose a layer, then draw, fill, crop, rotate, or adjust the origin.
@@ -39,7 +41,7 @@ Only one session can edit a shared map at a time; other sessions can view and do
 | Service admin | Manage all shared workspaces, delete/restore workspaces, release edit locks |
 
 Personal maps remain private. Deleted maps and workspaces go to trash.
-Gmail invitations require a connected sender and a deployed mail backend; share links work independently.
+Email invitations open Gmail with the join link filled in; the inviting administrator sends the message. No paid mail backend is required.
 
 ## Desktop
 

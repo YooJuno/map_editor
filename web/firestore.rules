@@ -14,7 +14,7 @@ service cloud.firestore {
         && d.keys().hasAll(['name','width','height','resolution','revision','previousRevision','chunks','bytes','preview','createdAt','updatedAt','trashed'])
         && (shared ? d.editorSession is string : !('editorSession' in d))
         && d.name is string && d.name.size() > 0 && d.name.size() <= 120
-        && d.width is int && d.width > 0 && d.height is int && d.height > 0 && d.width*d.height <= 33554432
+        && d.width is int && d.width > 0 && d.width <= 16384 && d.height is int && d.height > 0 && d.height <= 16384 && d.width*d.height <= 33554432
         && d.resolution is number && d.resolution > 0
         && d.revision is string && d.revision.size() <= 64 && d.previousRevision is string && d.previousRevision.size() <= 64
         && d.chunks is int && d.chunks > 0 && d.chunks <= 40 && d.bytes is int && d.bytes > 0 && d.bytes <= 20971520

@@ -38,12 +38,16 @@ import {
   type Rect,
 } from './map';
 import type { Translate } from './i18n';
+import type { TutorialSetup } from './tutorial';
 export function IconButton({
   title,
   active,
   children,
   ...rest
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { title: string; active?: boolean }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  title: string;
+  active?: boolean;
+}) {
   return (
     <button
       type="button"
@@ -95,7 +99,10 @@ function NumberField({
     </label>
   );
 }
-export type EditorHandle = { prepare: () => Promise<MapDoc> };
+export type EditorHandle = {
+  prepare: () => Promise<MapDoc>;
+  guide: (setup: TutorialSetup) => void;
+};
 type Props = {
   doc: MapDoc;
   t: Translate;
@@ -152,6 +159,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     [position, setPosition] = useState<Point | null>(null),
     [panel, setPanel] = useState(true);
   const canvas = useRef<CanvasHandle>(null),
+    yamlDetails = useRef<HTMLDetailsElement>(null),
     previousTool = useRef<Tool>('pen');
   const opacity = layer === 'map' ? 0.65 : opacities[layer],
     visible = layer === 'map' || visibility[layer];
@@ -208,7 +216,27 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     }
     return next;
   };
-  useImperativeHandle(ref, () => ({ prepare }));
+  useImperativeHandle(ref, () => ({
+    prepare,
+    guide: (setup) => {
+      canvas.current?.cancel();
+      setSelection(null);
+      setAngle(0);
+      setRect(null);
+      setMeta(doc.meta);
+      setPanel(true);
+      setActiveLayer(setup.layer);
+      setTool(setup.tool);
+      previousTool.current = 'pen';
+      setClear(setup.clear ?? false);
+      if (setup.color !== undefined) setColor(setup.color);
+      if (setup.layer !== 'map') {
+        setVisibility((v) => ({ ...v, [setup.layer]: true }));
+        setOpacities((v) => ({ ...v, [setup.layer]: 0.65 }));
+      }
+      if (yamlDetails.current) yamlDetails.current.open = !!setup.yaml;
+    },
+  }));
   const apply = () =>
     run(async () => {
       await prepare();
@@ -236,7 +264,13 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     if (!layerBytes(doc, layer) && value === 0) return;
     void run(async () =>
       onChange(
-        await job<MapDoc>({ action: 'polygon', doc: displayDoc, layer, points: vertices, value }),
+        await job<MapDoc>({
+          action: 'polygon',
+          doc: displayDoc,
+          layer,
+          points: vertices,
+          value,
+        }),
       ),
     );
   };
@@ -253,19 +287,35 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       if (layer === 'map') return;
       void run(async () =>
         setSelection(
-          await job<Selection | null>({ action: 'select', doc: displayDoc, layer, point, value }),
+          await job<Selection | null>({
+            action: 'select',
+            doc: displayDoc,
+            layer,
+            point,
+            value,
+          }),
         ),
       );
     } else if ((source?.[y * doc.width + x] || 0) !== value)
       void run(async () =>
-        onChange(await job<MapDoc>({ action: 'fill', doc: displayDoc, layer, point, value })),
+        onChange(
+          await job<MapDoc>({
+            action: 'fill',
+            doc: displayDoc,
+            layer,
+            point,
+            value,
+          }),
+        ),
       );
   };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (
         disabled ||
-        (e.target as HTMLElement).closest('input, textarea, select, [contenteditable]') ||
+        (e.target as HTMLElement).closest(
+          'input, textarea, select, [contenteditable], [data-shortcuts="off"]',
+        ) ||
         e.defaultPrevented
       )
         return;
@@ -324,6 +374,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         ).map(([key, Icon]) => (
           <button
             key={key}
+            data-tour={`layer-${key}`}
             disabled={disabled}
             className={layer === key && !geometry ? 'rail-item active' : 'rail-item'}
             onClick={() => changeLayer(key)}
@@ -342,6 +393,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         ).map(([key, Icon]) => (
           <button
             key={key}
+            data-tour={`layer-${key}`}
             disabled={disabled}
             className={tool === key ? 'rail-item active' : 'rail-item'}
             onClick={() => activate(key)}
@@ -355,6 +407,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         {Object.entries(toolIcons).map(([key, Icon]) => (
           <IconButton
             key={key}
+            data-tour={`tool-${key}`}
             title={t(key as keyof typeof toolIcons)}
             active={tool === key}
             disabled={disabled || (key === 'select' && layer === 'map')}
@@ -364,7 +417,12 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
           </IconButton>
         ))}
         <div className="rail-divider" />
-        <IconButton title={t('undo')} disabled={disabled || !canUndo} onClick={onUndo}>
+        <IconButton
+          data-tour="undo"
+          title={t('undo')}
+          disabled={disabled || !canUndo}
+          onClick={onUndo}
+        >
           <Undo2 size={18} />
         </IconButton>
         <IconButton title={t('redo')} disabled={disabled || !canRedo} onClick={onRedo}>
@@ -390,7 +448,11 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                       aria-label={`${t(label)} (${v})`}
                       title={`${t(label)} · ${v}`}
                       className={`swatch${color === v ? ' selected' : ''}`}
-                      style={{ '--swatch': `rgb(${v}, ${v}, ${v})` } as React.CSSProperties}
+                      style={
+                        {
+                          '--swatch': `rgb(${v}, ${v}, ${v})`,
+                        } as React.CSSProperties
+                      }
                       onClick={() => setColor(v)}
                     />
                   ))}
@@ -404,6 +466,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                     {layer === 'keepout' ? t('keepout') : `${speed}%`}
                   </button>
                   <button
+                    data-tour="mask-clear"
                     className={`text-button${clear ? ' selected' : ''}`}
                     onClick={() => setClear(true)}
                   >
@@ -412,6 +475,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                 </>
               )}
               <IconButton
+                data-tour="picker"
                 title={`${t('picker')} (I)`}
                 active={tool === 'picker'}
                 onClick={() => {
@@ -566,7 +630,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                 : t('properties')}
           </div>
           {layer !== 'map' && (
-            <section className="property-section">
+            <section className="property-section" data-tour="mask-display">
               <label className="check-row">
                 <input
                   type="checkbox"
@@ -587,12 +651,15 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                   max={100}
                   value={opacity * 100}
                   onChange={(e) =>
-                    setOpacities({ ...opacities, [layer]: Number(e.target.value) / 100 })
+                    setOpacities({
+                      ...opacities,
+                      [layer]: Number(e.target.value) / 100,
+                    })
                   }
                 />
               </label>
               {layer === 'speed' && (
-                <label className="slider-field">
+                <label className="slider-field" data-tour="speed-value">
                   <span>
                     {t('speedValue')}
                     <b>{speed}%</b>
@@ -656,7 +723,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
               )}
             </section>
           )}
-          <section className="property-section">
+          <section className="property-section" data-tour="metadata">
             <NumberField
               label={`${t('resolution')} (m/px)`}
               value={meta.resolution}
@@ -681,7 +748,10 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
               label="Yaw (°)"
               value={(meta.origin[2] * 180) / Math.PI}
               onChange={(v) =>
-                setMeta({ ...meta, origin: [meta.origin[0], meta.origin[1], (v * Math.PI) / 180] })
+                setMeta({
+                  ...meta,
+                  origin: [meta.origin[0], meta.origin[1], (v * Math.PI) / 180],
+                })
               }
             />
           </section>
@@ -696,7 +766,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
               </button>
             </div>
           )}
-          <details className="property-section">
+          <details className="property-section" data-tour="yaml" ref={yamlDetails}>
             <summary>
               <ChevronRight size={14} />
               YAML

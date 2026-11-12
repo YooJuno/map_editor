@@ -45,6 +45,7 @@ type Props = {
   onRetry: () => void;
   onUpload: () => void;
   onLogin: () => void;
+  onDesktop: () => void;
   onOpen: (map: CloudMap) => void;
   onRename: (map: CloudMap) => void;
   onDownload: (map: CloudMap) => void;
@@ -150,16 +151,10 @@ export function Library(p: Props) {
           </>
         )}
         <div className="spacer" />
-        <a
-          className="desktop-link"
-          href="https://github.com/YooJuno/map_editor/releases/latest"
-          target="_blank"
-          rel="noreferrer"
-        >
+        <button className="desktop-link" onClick={p.onDesktop}>
           <HardDrive size={16} />
           Desktop
-          <ArrowUpRight size={14} />
-        </a>
+        </button>
       </aside>
       <main className="library-main">
         <div className="library-heading">

@@ -1,0 +1,31 @@
+{
+  "tag_name": "v1.8.0",
+  "published_at": "2026-11-02T07:33:16Z",
+  "assets": [
+    {
+      "name": "MapEditor-1.8.0-macos-arm64.tar.gz",
+      "size": 21280252,
+      "browser_download_url": "https://github.com/YooJuno/map_editor/releases/download/v1.8.0/MapEditor-1.8.0-macos-arm64.tar.gz"
+    },
+    {
+      "name": "MapEditor-1.8.0-macos-x86_64.tar.gz",
+      "size": 21284591,
+      "browser_download_url": "https://github.com/YooJuno/map_editor/releases/download/v1.8.0/MapEditor-1.8.0-macos-x86_64.tar.gz"
+    },
+    {
+      "name": "MapEditor-1.8.0-ubuntu-24.04-x86_64.tar.gz",
+      "size": 28897193,
+      "browser_download_url": "https://github.com/YooJuno/map_editor/releases/download/v1.8.0/MapEditor-1.8.0-ubuntu-24.04-x86_64.tar.gz"
+    },
+    {
+      "name": "MapEditor-1.8.0-windows-x86_64.zip",
+      "size": 55352375,
+      "browser_download_url": "https://github.com/YooJuno/map_editor/releases/download/v1.8.0/MapEditor-1.8.0-windows-x86_64.zip"
+    },
+    {
+      "name": "SHA256SUMS",
+      "size": 413,
+      "browser_download_url": "https://github.com/YooJuno/map_editor/releases/download/v1.8.0/SHA256SUMS"
+    }
+  ]
+}

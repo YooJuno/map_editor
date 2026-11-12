@@ -97,6 +97,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -150,3 +151,5 @@ jobs:
             gh release create "$RELEASE_TAG" "${archives[@]}" SHA256SUMS \
               --verify-tag --title "Map Editor $RELEASE_TAG" --notes-file "$notes" --generate-notes
           fi
+      - name: Refresh desktop downloads on the website
+        run: gh workflow run web.yml --ref main

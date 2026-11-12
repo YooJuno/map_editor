@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { forwardRef, useImperativeHandle } from 'react';
 const f = vi.hoisted(() => ({
-  user: { uid: 'alice', email: 'alice@example.com', displayName: 'Alice', photoURL: null },
+  user: {
+    uid: 'alice',
+    email: 'alice@example.com',
+    displayName: 'Alice',
+    photoURL: null,
+  },
   map: {
     name: 'Office',
     width: 2,
@@ -90,11 +95,15 @@ vi.mock('../src/Editor', async (importOriginal) => {
     }),
   };
 });
-vi.mock('../src/jobs', () => ({ job: async () => new Uint8Array(4) }));
+vi.mock('../src/jobs', () => ({
+  job: async (task: { action: string }) =>
+    task.action === 'import' ? { ...f.map } : new Uint8Array(4),
+}));
 import App from '../src/App';
 beforeEach(() => {
   cleanup();
   localStorage.clear();
+  window.history.replaceState(null, '', '/');
   f.global = false;
   f.workspaces = [];
   f.leases = [];
@@ -102,7 +111,9 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
     () =>
       ({
-        createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+        createImageData: (w: number, h: number) => ({
+          data: new Uint8ClampedArray(w * h * 4),
+        }),
         putImageData: () => {},
       }) as any,
   );
@@ -125,7 +136,9 @@ describe('library and editor integration', () => {
   it('cancels inline name changes with Escape', async () => {
     render(<App />);
     await open();
-    const name = screen.getByRole('textbox', { name: '지도 이름' }) as HTMLInputElement;
+    const name = screen.getByRole('textbox', {
+      name: '지도 이름',
+    }) as HTMLInputElement;
     fireEvent.change(name, { target: { value: 'Unwanted' } });
     fireEvent.keyDown(name, { key: 'Escape' });
     expect(name.value).toBe('Office');
@@ -163,7 +176,13 @@ describe('library and editor integration', () => {
   });
   it('keeps map deletion hidden for workspace members and opens occupied maps read-only', async () => {
     f.workspaces = [
-      { id: 'team', name: 'Team', memberIds: ['alice', 'bob'], adminIds: ['bob'], deleted: false },
+      {
+        id: 'team',
+        name: 'Team',
+        memberIds: ['alice', 'bob'],
+        adminIds: ['bob'],
+        deleted: false,
+      },
     ];
     f.leases = [
       {
@@ -184,5 +203,47 @@ describe('library and editor integration', () => {
     expect((screen.getByRole('textbox', { name: '지도 이름' }) as HTMLInputElement).disabled).toBe(
       true,
     );
+  });
+});
+
+describe('tutorial practice isolation', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(4),
+      }),
+    );
+  });
+  it('opens a practice map and never calls cloud save', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '튜토리얼' }));
+    await screen.findByRole('region', { name: '튜토리얼' });
+    expect(screen.getByText('예제 지도')).toBeTruthy();
+    const name = screen.getByRole('textbox', { name: '지도 이름' });
+    fireEvent.change(name, { target: { value: 'Practice only' } });
+    fireEvent.keyDown(name, { key: 's', ctrlKey: true });
+    await screen.findByText(/저장 동작을 연습했습니다/);
+    expect(f.save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '튜토리얼 종료' }));
+    expect(screen.queryByTestId('editor')).toBeNull();
+    expect(screen.queryByTestId('tutorial')).toBeNull();
+  });
+  it('advances instructions and restores the previous step', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '튜토리얼' }));
+    await screen.findByRole('region', { name: '튜토리얼' });
+    fireEvent.click(screen.getByRole('button', { name: '다음' }));
+    expect(screen.getByText('세 가지 색')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '이전' }));
+    expect(screen.getByText('예제 지도')).toBeTruthy();
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { forwardRef, useImperativeHandle, createRef } from 'react';
 import { Editor, type EditorHandle } from '../src/Editor';
 import { defaults, type MapDoc, type Point } from '../src/map';
@@ -34,7 +34,9 @@ vi.mock('../src/MapCanvas', () => ({
     );
   }),
 }));
-vi.mock('../src/jobs', () => ({ job: vi.fn(async (task: { doc: MapDoc }) => task.doc) }));
+vi.mock('../src/jobs', () => ({
+  job: vi.fn(async (task: { doc: MapDoc }) => task.doc),
+}));
 const t = translator('ko');
 const make = (): MapDoc => ({
   name: 'Office',
@@ -94,7 +96,12 @@ describe('editor controls', () => {
     for (const input of screen.getAllByRole('spinbutton'))
       expect((input.closest('fieldset') as HTMLFieldSetElement).disabled).toBe(true);
     expect(
-      (screen.getByRole('button', { name: '지도', exact: true }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole('button', {
+          name: '지도',
+          exact: true,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
   it('applies numeric origin changes to the saved metadata', async () => {
@@ -147,4 +154,16 @@ describe('editor controls', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '완료' })).toBeTruthy());
     await expect(ref.current!.prepare()).rejects.toThrow('점을 찍고');
   });
+});
+
+it('switches tutorial tools, cancels unfinished geometry, and opens YAML settings without modifying pixels', async () => {
+  const { ref, onChange } = setup();
+  fireEvent.click(screen.getByRole('button', { name: '다각형' }));
+  fireEvent.click(screen.getByText('place four points'));
+  act(() => ref.current!.guide({ layer: 'speed', tool: 'rect' }));
+  expect(screen.queryByRole('button', { name: '완료' })).toBeNull();
+  expect(screen.getByRole('slider', { name: t('speedValue') })).toBeTruthy();
+  act(() => ref.current!.guide({ layer: 'map', tool: 'pen', yaml: true }));
+  expect(document.querySelector<HTMLDetailsElement>('[data-tour="yaml"]')!.open).toBe(true);
+  expect(onChange).not.toHaveBeenCalled();
 });

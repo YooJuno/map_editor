@@ -23,6 +23,7 @@ import {
 import { auth } from './firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
+import { gmailInviteUrl } from './mail';
 type Runner = (task: () => Promise<void>) => Promise<void>;
 type Props = {
   mode: 'create' | 'manage' | 'trash';
@@ -153,7 +154,10 @@ export function WorkspaceDialog({
                       disabled={busy}
                       onClick={() =>
                         void run(async () => {
-                          await updateWorkspace(w, { deleted: false, enabled: true });
+                          await updateWorkspace(w, {
+                            deleted: false,
+                            enabled: true,
+                          });
                         })
                       }
                     >
@@ -249,7 +253,10 @@ export function WorkspaceDialog({
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
-                      await updateWorkspace(workspace, { rotateLink: true, enabled: true });
+                      await updateWorkspace(workspace, {
+                        rotateLink: true,
+                        enabled: true,
+                      });
                       setCopied(false);
                     })
                   }
@@ -264,19 +271,36 @@ export function WorkspaceDialog({
                   <UserPlus size={16} />
                   <h3>{t('inviteEmail')}</h3>
                 </div>
-                <div className="email-invite">
+                <form
+                  className="email-invite"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!link?.enabled) return;
+                    const url = gmailInviteUrl(
+                      email,
+                      workspace.name,
+                      shareUrl(link.id),
+                      auth.currentUser?.email || null,
+                      t('inviteSubject'),
+                      t('inviteMessage'),
+                    );
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                  }}
+                >
                   <input
                     type="email"
+                    required
+                    maxLength={254}
+                    disabled={busy || !link?.enabled}
                     aria-label={t('inviteEmail')}
                     placeholder="name@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
-                  <button disabled title={t('mailNotReady')}>
-                    {t('invite')}
+                  <button disabled={busy || !email.trim() || !link?.enabled}>
+                    {t('composeInvite')}
                   </button>
-                </div>
-                <p className="muted">{t('mailNotReady')}</p>
+                </form>
               </section>
             )}
             {manage && (

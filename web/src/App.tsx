@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { ArrowLeft, Download, LoaderCircle, LockKeyhole, Save, Upload, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  CircleHelp,
+  Download,
+  LoaderCircle,
+  LockKeyhole,
+  Save,
+  Upload,
+  X,
+} from 'lucide-react';
 import {
   auth,
   login,
@@ -38,6 +47,9 @@ import {
 import { layerBytes, safeName, type MapDoc, type NamedFile } from './map';
 import { translator, type Lang } from './i18n';
 import { job } from './jobs';
+import { Tutorial } from './Tutorial';
+import { Downloads } from './Downloads';
+import { tutorialLabels, tutorialSteps } from './tutorial';
 
 function thumbnail(doc: MapDoc) {
   const canvas = document.createElement('canvas');
@@ -123,6 +135,8 @@ export default function App() {
     [leases, setLeases] = useState<EditLease[]>([]),
     [clock, setClock] = useState(Date.now());
   const [busy, setBusy] = useState(false),
+    [desktop, setDesktop] = useState(() => location.pathname === '/desktop'),
+    [tutorialIndex, setTutorialIndex] = useState<number | null>(null),
     [toast, setToast] = useState(''),
     [upload, setUpload] = useState(false),
     [trash, setTrash] = useState(false),
@@ -133,12 +147,30 @@ export default function App() {
     );
   const [, renderHistory] = useState(0),
     currentRef = useRef<MapDoc | null>(null),
-    historyRef = useRef<{ past: MapDoc[]; future: MapDoc[] }>({ past: [], future: [] }),
+    historyRef = useRef<{ past: MapDoc[]; future: MapDoc[] }>({
+      past: [],
+      future: [],
+    }),
     previousWorkspaces = useRef<Workspace[]>([]),
     owner = useRef<string | null>(null),
     busyRef = useRef(false),
     editor = useRef<EditorHandle>(null),
     input = useRef<HTMLInputElement>(null);
+  const tutorialScope = useRef<string | undefined>(undefined);
+  const showDesktop = () => {
+    setDesktop(true);
+    window.history.pushState(null, '', `/desktop${location.search}`);
+  };
+  const closeDesktop = () => {
+    setDesktop(false);
+    if (location.pathname === '/desktop')
+      window.history.replaceState(null, '', `/${location.search}`);
+  };
+  useEffect(() => {
+    const changed = () => setDesktop(location.pathname === '/desktop');
+    window.addEventListener('popstate', changed);
+    return () => window.removeEventListener('popstate', changed);
+  }, []);
   currentRef.current = current;
   const selectedWorkspace = workspaces.find((w) => w.id === workspaceId && !w.deleted),
     workspaceManager = canManage(selectedWorkspace, globalAdmin),
@@ -329,7 +361,7 @@ export default function App() {
     setDraft(false);
     setNameDraft(null);
     setSession((v) => v + 1);
-    setEditingWorkspaceId(saved?.workspaceId ?? workspaceId);
+    setEditingWorkspaceId(saved?.workspaceId);
     setEditContext(context);
     setLeaseHeld(!!context);
     historyRef.current = { past: [], future: [] };
@@ -350,7 +382,50 @@ export default function App() {
     renderHistory((v) => v + 1);
   };
   const leave = () => !current || !unsaved || confirm(t('leave'));
+  const closeTutorial = () => {
+    setTutorialIndex(null);
+    setCurrent(null);
+    setCloud(undefined);
+    setDirty(false);
+    setDraft(false);
+    setNameDraft(null);
+    setEditContext(undefined);
+    setEditingWorkspaceId(undefined);
+    setWorkspaceId(tutorialScope.current);
+    historyRef.current = { past: [], future: [] };
+  };
+  const startTutorial = () => {
+    if (busyRef.current || !leave()) return;
+    void run(async () => {
+      const files: NamedFile[] = await Promise.all(
+        ['office.yaml', 'office.pgm'].map(async (name) => {
+          const response = await fetch(`/tutorial/${name}`);
+          if (!response.ok) throw Error('Unable to load the tutorial map.');
+          return { name, bytes: new Uint8Array(await response.arrayBuffer()) };
+        }),
+      );
+      const map = await job<MapDoc>({ action: 'import', files });
+      tutorialScope.current = workspaceId;
+      setWorkspaceId(undefined);
+      setTrash(false);
+      closeDesktop();
+      reset(map);
+      setTutorialIndex(0);
+    });
+  };
+  useEffect(() => {
+    if (tutorialIndex === null) return;
+    editor.current?.guide?.(tutorialSteps(lang)[tutorialIndex].setup);
+  }, [tutorialIndex, session]);
   const closeMap = () => {
+    if (desktop) {
+      closeDesktop();
+      return;
+    }
+    if (tutorialIndex !== null) {
+      if (!busy) closeTutorial();
+      return;
+    }
     if (busy || !leave()) return;
     setCurrent(null);
     setDirty(false);
@@ -360,13 +435,17 @@ export default function App() {
     setEditingWorkspaceId(undefined);
   };
   const openFiles = (files: FileList | File[]) => {
+    if (tutorialIndex !== null) return;
     if (!files.length || busyRef.current || !leave()) return;
     void run(async () => {
       const selected = Array.from(files);
       if (selected.length > 12 || selected.reduce((sum, f) => sum + f.size, 0) > 128 * 1024 * 1024)
         throw Error('최대 128 MiB의 지도 파일을 선택하세요.');
       const data: NamedFile[] = await Promise.all(
-        selected.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })),
+        selected.map(async (f) => ({
+          name: f.name,
+          bytes: new Uint8Array(await f.arrayBuffer()),
+        })),
       );
       const map = await job<MapDoc>({ action: 'import', files: data });
       if (workspaceId) {
@@ -376,6 +455,7 @@ export default function App() {
         reset(map, { id, revision: '', workspaceId }, lease.context);
       } else reset(map);
       setUpload(false);
+      closeDesktop();
     });
   };
   const persist = async () => {
@@ -385,6 +465,12 @@ export default function App() {
       map = prepared.name === desiredName ? prepared : { ...prepared, name: desiredName };
     if (map !== prepared) commit(map);
     setNameDraft(null);
+    if (tutorialIndex !== null) {
+      setDirty(false);
+      setDraft(false);
+      setToast(tutorialLabels[lang].saved);
+      return;
+    }
     if (!auth.currentUser) await login();
     const result = await saveMap(map, thumbnail(map), cloud, editContext);
     setCloud(result);
@@ -452,6 +538,7 @@ export default function App() {
       setCurrent(null);
       setCloud(undefined);
       setDirty(false);
+      setTutorialIndex(null);
     });
   };
   const clearJoin = () => {
@@ -540,23 +627,38 @@ export default function App() {
               }}
             />
             <span className={`save-state${unsaved ? ' edited' : ''}`}>
-              {!cloud?.revision ? t('local') : unsaved ? t('unsaved') : t('saved')}
+              {tutorialIndex !== null
+                ? t(unsaved ? 'unsaved' : 'saved')
+                : !cloud?.revision
+                  ? t('local')
+                  : unsaved
+                    ? t('unsaved')
+                    : t('saved')}
             </span>
           </>
         )}
         <div className="spacer" />
         {current && (
           <>
-            <IconButton title={t('upload')} disabled={busy} onClick={() => setUpload(true)}>
+            <IconButton
+              title={t('upload')}
+              disabled={busy || tutorialIndex !== null}
+              onClick={() => setUpload(true)}
+            >
               <Upload size={18} />
             </IconButton>
-            <IconButton title={`${t('download')} · ZIP`} disabled={busy} onClick={() => download()}>
+            <IconButton
+              data-tour="download"
+              title={`${t('download')} · ZIP`}
+              disabled={busy}
+              onClick={() => download()}
+            >
               <Download size={18} />
             </IconButton>
             <button
               className="primary save-button"
               aria-label={t('save')}
-              title={!user ? t('loginSave') : t('save')}
+              title={!user && tutorialIndex === null ? t('loginSave') : t('save')}
               disabled={busy || readOnly || !unsaved}
               onClick={save}
             >
@@ -565,6 +667,13 @@ export default function App() {
             <span className="header-divider" />
           </>
         )}
+        <IconButton
+          title={tutorialLabels[lang].name}
+          disabled={busy || tutorialIndex !== null}
+          onClick={startTutorial}
+        >
+          <CircleHelp size={19} />
+        </IconButton>
         <AccountMenu
           user={user}
           serviceAdmin={globalAdmin}
@@ -579,7 +688,9 @@ export default function App() {
         />
       </header>
       {!online && <div className="offline-banner">{t('offline')}</div>}
-      {current ? (
+      {desktop ? (
+        <Downloads lang={lang} onBack={closeDesktop} />
+      ) : current ? (
         <>
           {editingWorkspaceId && (
             <div className="edit-lease-banner">
@@ -639,6 +750,7 @@ export default function App() {
           onRetry={() => setReload((v) => v + 1)}
           onUpload={() => setUpload(true)}
           onLogin={() => void run(login)}
+          onDesktop={showDesktop}
           onOpen={openRecord}
           onRename={(record) => setRename({ id: record.id, name: record.name })}
           onDownload={(record) => download(record)}
@@ -776,6 +888,15 @@ export default function App() {
           onLogin={() => void run(login)}
           onClose={clearJoin}
           onJoined={joined}
+        />
+      )}
+      {tutorialIndex !== null && current && (
+        <Tutorial
+          lang={lang}
+          index={tutorialIndex}
+          busy={busy}
+          onStep={setTutorialIndex}
+          onClose={closeTutorial}
         />
       )}
       {toast && (
