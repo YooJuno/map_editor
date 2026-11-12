@@ -212,12 +212,18 @@ p {
   background: var(--line);
   flex-shrink: 0;
 }
-.document-name {
+.document-name-input {
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+}
+.save-button {
+  width: 34px;
+  height: 32px;
+  padding: 0;
+  flex-shrink: 0;
 }
 .save-state {
   font-size: 11px;
@@ -482,6 +488,15 @@ p {
 }
 .map-card-body p span {
   padding: 0 7px;
+}
+.map-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .map-card time {
   color: var(--muted);
@@ -1127,11 +1142,8 @@ details[open] > summary > svg {
   .brand small {
     display: none;
   }
-  .document-name {
+  .document-name-input {
     max-width: 130px;
-  }
-  .save-button span {
-    display: none;
   }
   .library-sidebar {
     width: 174px;
@@ -1212,7 +1224,7 @@ details[open] > summary > svg {
     z-index: 4;
     box-shadow: -10px 0 25px #0003;
   }
-  .document-name {
+  .document-name-input {
     max-width: 95px;
     font-size: 12px;
   }
@@ -1330,5 +1342,159 @@ details[open] > summary > svg {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+.document-name-input {
+  min-width: 75px;
+  max-width: 245px;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  cursor: text;
+}
+.account-menu {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 5px;
+}
+.account-trigger {
+  width: 35px;
+  height: 35px;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+}
+.account-trigger[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+.account-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--raised);
+  color: var(--muted);
+}
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.account-popover {
+  position: absolute;
+  top: calc(100% + 13px);
+  right: 0;
+  z-index: 40;
+  width: 240px;
+  max-width: calc(100vw - 24px);
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 35px #0004;
+  animation: account-menu-in 0.14s ease-out;
+}
+.account-profile {
+  padding: 10px 10px 14px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.account-profile strong {
+  display: block;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-profile span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-popover .language-trigger {
+  width: 100%;
+  padding: 11px 10px;
+  color: var(--text);
+}
+.account-popover .language-trigger span {
+  flex: 1;
+  text-align: left;
+}
+.account-popover .language-options {
+  right: 0;
+  top: calc(100% + 3px);
+  z-index: 2;
+}
+.account-theme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+.account-theme > div {
+  display: flex;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px;
+}
+.account-theme button {
+  width: 29px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 3px;
+}
+.account-theme button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.account-separator {
+  height: 1px;
+  background: var(--line);
+  margin: 7px 2px;
+}
+.account-action {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 11px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+@keyframes account-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 800px) {
+  .document-name-input {
+    max-width: 145px;
+  }
+}
+@media (max-width: 570px) {
+  .document-name-input {
+    max-width: 110px;
   }
 }

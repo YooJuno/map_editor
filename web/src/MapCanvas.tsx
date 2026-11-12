@@ -90,6 +90,27 @@ function originPixel(doc: MapDoc): Point {
     y: doc.height - (x * Math.sin(a) - y * Math.cos(a)) / r,
   };
 }
+function originRotationHit(point: Point, doc: MapDoc, zoom: number) {
+  const o = originPixel(doc),
+    yaw = doc.meta.origin[2];
+  for (const offset of [0, -Math.PI / 2])
+    if (
+      Math.hypot(
+        point.x - o.x - (Math.cos(yaw + offset) * 45) / zoom,
+        point.y - o.y - (Math.sin(yaw + offset) * 45) / zoom,
+      ) *
+        zoom <
+      12
+    )
+      return true;
+  const angle = Math.atan2(point.y - o.y, point.x - o.x) - yaw;
+  const relative = Math.atan2(Math.sin(angle), Math.cos(angle));
+  return (
+    Math.abs(Math.hypot(point.x - o.x, point.y - o.y) * zoom - 26) < 8 &&
+    relative >= -Math.PI / 2 - 0.1 &&
+    relative <= 0.1
+  );
+}
 export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(props, ref) {
   const element = useRef<HTMLCanvasElement>(null),
     latest = useRef(props),
@@ -320,6 +341,29 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
         ctx.font = `${11 / z}px sans-serif`;
         ctx.fillText(label, x + 5 / z, y - 5 / z);
       }
+      if (p.tool === 'origin') {
+        const start = a - Math.PI / 2 + 0.22,
+          end = a - 0.22,
+          radius = 26 / z;
+        ctx.strokeStyle = light ? '#617b9b' : '#a6b7ce';
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.lineWidth = 1.5 / z;
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, radius, start, end);
+        ctx.stroke();
+        const x = o.x + Math.cos(end) * radius,
+          y = o.y + Math.sin(end) * radius;
+        const tx = -Math.sin(end),
+          ty = Math.cos(end),
+          nx = Math.cos(end),
+          ny = Math.sin(end);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - (tx * 6) / z + (nx * 3) / z, y - (ty * 6) / z + (ny * 3) / z);
+        ctx.lineTo(x - (tx * 6) / z - (nx * 3) / z, y - (ty * 6) / z - (ny * 3) / z);
+        ctx.closePath();
+        ctx.fill();
+      }
       ctx.beginPath();
       ctx.arc(o.x, o.y, 4 / z, 0, Math.PI * 2);
       ctx.fillStyle = '#e9edf2';
@@ -365,17 +409,9 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       else if (p.tool === 'origin') {
         const o = originPixel(p.doc),
           a = p.doc.meta.origin[2];
-        let axisOffset: number | undefined;
-        for (const offset of [0, -Math.PI / 2])
-          if (
-            Math.hypot(
-              at.x - o.x - (Math.cos(a + offset) * 45) / camera.zoom,
-              at.y - o.y - (Math.sin(a + offset) * 45) / camera.zoom,
-            ) *
-              camera.zoom <
-            12
-          )
-            axisOffset = offset;
+        const axisOffset = originRotationHit(at, p.doc, camera.zoom)
+          ? Math.atan2(at.y - o.y, at.x - o.x) - a
+          : undefined;
         drag = {
           start: o,
           last: at,
@@ -479,12 +515,17 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
         else if (drag.mode === 'axis') {
           let a = Math.atan2(at.y - drag.start.y, at.x - drag.start.x) - drag.axisOffset!;
           if (e.shiftKey) a = (Math.round(a / (Math.PI / 12)) * Math.PI) / 12;
-          p.onOrigin(
-            originAt(drag.start, {
-              ...p.doc,
-              meta: { ...p.doc.meta, origin: [p.doc.meta.origin[0], p.doc.meta.origin[1], a] },
-            }),
-          );
+          if (
+            Math.abs(
+              Math.atan2(Math.sin(a - p.doc.meta.origin[2]), Math.cos(a - p.doc.meta.origin[2])),
+            ) > 1e-10
+          )
+            p.onOrigin(
+              originAt(drag.start, {
+                ...p.doc,
+                meta: { ...p.doc.meta, origin: [p.doc.meta.origin[0], p.doc.meta.origin[1], a] },
+              }),
+            );
         } else if (p.tool === 'crop') {
           const r = drag.rect,
             dx = at.x - drag.start.x,
@@ -508,10 +549,11 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
         }
         drag.last = at;
       }
+      const rotationHover = p.tool === 'origin' && originRotationHit(at, p.doc, camera.zoom);
       canvas.style.cursor =
-        drag?.mode === 'pan'
+        drag?.mode === 'pan' || drag?.mode === 'axis'
           ? 'grabbing'
-          : p.tool === 'hand'
+          : p.tool === 'hand' || rotationHover
             ? 'grab'
             : p.tool === 'crop'
               ? 'crosshair'

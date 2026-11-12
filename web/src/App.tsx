@@ -4,14 +4,11 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Download,
-  LogOut,
   Map,
-  Moon,
   MoreHorizontal,
   Pencil,
   Plus,
   Search,
-  Sun,
   Trash2,
   Upload,
   X,
@@ -36,7 +33,7 @@ import {
   type CloudMap,
 } from './firebase';
 import { Editor, IconButton, type EditorHandle } from './Editor';
-import { LanguageMenu } from './LanguageMenu';
+import { AccountMenu } from './AccountMenu';
 import { layerBytes, safeName, type MapDoc, type NamedFile } from './map';
 import { translator, type Lang } from './i18n';
 import { job } from './jobs';
@@ -79,6 +76,11 @@ function thumbnail(doc: MapDoc) {
   ctx.putImageData(out, 0, 0);
   return canvas.toDataURL('image/webp', 0.75);
 }
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
 function downloadBytes(bytes: Uint8Array, name: string) {
   const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'application/zip' }));
   const a = document.createElement('a');
@@ -120,6 +122,8 @@ export default function App() {
     [, setHistoryVersion] = useState(0),
     [reload, setReload] = useState(0),
     [session, setSession] = useState(0);
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const nameChanged = !!nameDraft?.trim() && nameDraft.trim() !== current?.name;
   const currentRef = useRef<MapDoc | null>(null);
   currentRef.current = current;
   const editor = useRef<EditorHandle>(null),
@@ -194,14 +198,22 @@ export default function App() {
   }, []);
   useEffect(() => {
     const before = (e: BeforeUnloadEvent) => {
-      if (current && (dirty || draft || busy)) {
+      if (current && (dirty || draft || nameChanged || busy)) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', before);
     return () => window.removeEventListener('beforeunload', before);
-  }, [dirty, draft, busy, current]);
+  }, [dirty, draft, nameChanged, busy, current]);
+  useEffect(() => {
+    const outside = (event: PointerEvent) =>
+      document.querySelectorAll<HTMLDetailsElement>('details.card-menu[open]').forEach((menu) => {
+        if (!menu.contains(event.target as Node)) menu.open = false;
+      });
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, []);
   const commit = useCallback((next: MapDoc) => {
     const old = currentRef.current;
     if (old && old !== next) {
@@ -230,6 +242,7 @@ export default function App() {
   const reset = (doc: MapDoc, saved?: { id: string; revision: string }) => {
     currentRef.current = doc;
     setCurrent(doc);
+    setNameDraft(null);
     setSession((v) => v + 1);
     setCloud(saved);
     setDirty(!saved);
@@ -252,7 +265,7 @@ export default function App() {
     setHistoryVersion((v) => v + 1);
   };
   const leave = () => {
-    if (current && (dirty || draft) && !confirm(t('leave'))) return false;
+    if (current && (dirty || draft || nameChanged) && !confirm(t('leave'))) return false;
     return true;
   };
   const openFiles = (files: FileList | File[]) => {
@@ -269,9 +282,13 @@ export default function App() {
     });
   };
   const save = () => {
-    if (!current || !(dirty || draft)) return;
+    if (!current || !(dirty || draft || nameChanged)) return;
     void run(async () => {
-      const map = await editor.current!.prepare();
+      const desiredName = (nameDraft ?? current.name).trim() || current.name;
+      const prepared = await editor.current!.prepare();
+      const map = prepared.name === desiredName ? prepared : { ...prepared, name: desiredName };
+      if (map !== prepared) commit(map);
+      setNameDraft(null);
       if (!auth.currentUser) await login();
       const result = await saveMap(map, thumbnail(map), cloud);
       setCloud(result);
@@ -283,7 +300,8 @@ export default function App() {
   const download = (record?: CloudMap) =>
     void run(async () => {
       const map = record ? (await loadMap(record.id)).map : await editor.current!.prepare();
-      downloadBytes(await job<Uint8Array>({ action: 'pack', doc: map }), map.name);
+      const output = !record && nameDraft?.trim() ? { ...map, name: nameDraft.trim() } : map;
+      downloadBytes(await job<Uint8Array>({ action: 'pack', doc: output }), output.name);
     });
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -292,6 +310,10 @@ export default function App() {
         if (!busyRef.current) save();
       }
       if (e.key === 'Escape' && !busyRef.current) {
+        document.querySelectorAll<HTMLDetailsElement>('details.card-menu[open]').forEach((menu) => {
+          menu.open = false;
+          menu.querySelector<HTMLElement>('summary')?.focus();
+        });
         setUpload(false);
         setRename(null);
       }
@@ -339,7 +361,6 @@ export default function App() {
         >
           <img src="/icon.svg" alt="" />
           <span>Map Editor</span>
-          <small>WEB</small>
         </a>
         {current && (
           <>
@@ -357,16 +378,37 @@ export default function App() {
             >
               <ArrowLeft size={17} />
             </IconButton>
-            <span className="document-name">{current.name}</span>
-            <IconButton
-              title={t('rename')}
+            <input
+              className="document-name-input"
+              aria-label={t('name')}
+              title={t('name')}
+              maxLength={120}
               disabled={busy}
-              onClick={() => setRename({ name: current.name })}
-            >
-              <Pencil size={14} />
-            </IconButton>
-            <span className={`save-state${dirty || draft ? ' edited' : ''}`}>
-              {!cloud ? t('local') : dirty || draft ? t('unsaved') : t('saved')}
+              size={Math.max(8, Math.min(26, (nameDraft ?? current.name).length + 2))}
+              value={nameDraft ?? current.name}
+              onChange={(event) => setNameDraft(event.target.value)}
+              onFocus={(event) => event.currentTarget.select()}
+              onBlur={(event) => {
+                const name = event.currentTarget.value.trim();
+                setNameDraft(null);
+                if (name && name !== current.name) commit({ ...current, name });
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.currentTarget.blur();
+                } else if (event.key === 'Escape') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.currentTarget.value = current.name;
+                  setNameDraft(null);
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+            <span className={`save-state${dirty || draft || nameChanged ? ' edited' : ''}`}>
+              {!cloud ? t('local') : dirty || draft || nameChanged ? t('unsaved') : t('saved')}
             </span>
           </>
         )}
@@ -381,49 +423,27 @@ export default function App() {
             </IconButton>
             <button
               className="primary save-button"
+              aria-label={t('save')}
               title={!user ? t('loginSave') : t('save')}
-              disabled={busy || !(dirty || draft)}
+              disabled={busy || !(dirty || draft || nameChanged)}
               onClick={save}
             >
               <Save size={16} />
-              <span>{t('save')}</span>
             </button>
             <span className="header-divider" />
           </>
         )}
-        <LanguageMenu value={lang} onChange={setLang} />
-        <IconButton
-          title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-        </IconButton>
-        {user ? (
-          <div className="account">
-            <span className="avatar" title={user.email || ''}>
-              {user.photoURL ? (
-                <img
-                  src={user.photoURL}
-                  referrerPolicy="no-referrer"
-                  alt={user.displayName || ''}
-                />
-              ) : (
-                user.displayName?.[0] || 'G'
-              )}
-            </span>
-            <IconButton title={t('logout')} disabled={busy} onClick={signout}>
-              <LogOut size={16} />
-            </IconButton>
-          </div>
-        ) : (
-          <button
-            className="login-small"
-            disabled={busy || !authReady}
-            onClick={() => void run(login)}
-          >
-            {t('login')}
-          </button>
-        )}
+        <AccountMenu
+          user={user}
+          lang={lang}
+          theme={theme}
+          t={t}
+          busy={busy}
+          onLang={setLang}
+          onTheme={setTheme}
+          onLogin={() => void run(login)}
+          onLogout={signout}
+        />
       </header>
       {!online && <div className="offline-banner">{t('offline')}</div>}
       {current ? (
@@ -475,9 +495,8 @@ export default function App() {
           <main className="library-main">
             <div className="library-heading">
               <div>
-                <div className="eyebrow">MAP LIBRARY</div>
                 <h1>{t(trash ? 'trash' : 'maps')}</h1>
-                <p>{t(trash ? 'trashHint' : 'intro')}</p>
+                {trash && <p>{t('trashHint')}</p>}
               </div>
               <button className="primary" disabled={busy} onClick={() => setUpload(true)}>
                 <Plus size={17} />
@@ -491,7 +510,6 @@ export default function App() {
                     <Map size={26} />
                   </div>
                   <h2>Map Editor</h2>
-                  <p>{t('intro')}</p>
                   <button className="google-button" disabled={busy} onClick={() => void run(login)}>
                     <span className="google-mark">G</span>
                     {t('login')}
@@ -585,7 +603,21 @@ export default function App() {
                         <div className="map-card-body">
                           <div className="map-card-title">
                             <h2 title={record.name}>{record.name}</h2>
-                            <details className="card-menu">
+                            <details
+                              className="card-menu"
+                              onToggle={(event) => {
+                                if (event.currentTarget.open)
+                                  document
+                                    .querySelectorAll<HTMLDetailsElement>('details.card-menu[open]')
+                                    .forEach((menu) => {
+                                      if (menu !== event.currentTarget) menu.open = false;
+                                    });
+                              }}
+                              onClick={(event) => {
+                                if ((event.target as Element).closest('button'))
+                                  event.currentTarget.open = false;
+                              }}
+                            >
                               <summary aria-label="More">
                                 <MoreHorizontal size={19} />
                               </summary>
@@ -640,7 +672,10 @@ export default function App() {
                             <span>·</span>
                             {record.resolution} m/px
                           </p>
-                          <time>{record.updatedAt?.toDate().toLocaleDateString(lang)}</time>
+                          <div className="map-card-footer">
+                            <time>{record.updatedAt?.toDate().toLocaleDateString(lang)}</time>
+                            <span title={t('fileSize')}>{formatBytes(record.bytes)}</span>
+                          </div>
                         </div>
                       </article>
                     ))}
