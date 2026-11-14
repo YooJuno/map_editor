@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { forwardRef, useImperativeHandle, createRef } from 'react';
 import { Editor, type EditorHandle } from '../src/Editor';
@@ -166,4 +166,38 @@ it('switches tutorial tools, cancels unfinished geometry, and opens YAML setting
   act(() => ref.current!.guide({ layer: 'map', tool: 'pen', yaml: true }));
   expect(document.querySelector<HTMLDetailsElement>('[data-tour="yaml"]')!.open).toBe(true);
   expect(onChange).not.toHaveBeenCalled();
+});
+
+afterEach(() => vi.unstubAllGlobals());
+it('starts compact with an unobstructed canvas and exposes brush settings in a popover', () => {
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  setup();
+  expect(screen.queryByRole('complementary', { name: t('properties') })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '굵기' }));
+  fireEvent.change(screen.getByRole('slider', { name: '굵기' }), { target: { value: '32' } });
+  expect((screen.getByRole('spinbutton', { name: '굵기' }) as HTMLInputElement).value).toBe('32');
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole('slider', { name: '굵기' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: t('properties') }));
+  expect(screen.getByRole('complementary', { name: t('properties') })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+  expect(screen.queryByRole('complementary', { name: t('properties') })).toBeNull();
+});
+it('offers Apply and Cancel for a touch crop without requiring the properties sheet', () => {
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  setup();
+  fireEvent.click(screen.getByRole('button', { name: '자르기', exact: true }));
+  fireEvent.click(screen.getByText('crop box'));
+  expect(screen.getByRole('button', { name: '적용' })).toBeTruthy();
+  expect(screen.queryByRole('complementary', { name: t('properties') })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '취소' }));
+  expect(screen.queryByRole('button', { name: '적용' })).toBeNull();
 });

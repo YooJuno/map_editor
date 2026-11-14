@@ -13,12 +13,31 @@ beforeEach(() => {
     return next;
   });
   vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
-  vi.stubGlobal('PointerEvent', MouseEvent);
+  vi.stubGlobal(
+    'PointerEvent',
+    class extends MouseEvent {
+      pointerId: number;
+      pointerType: string;
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init);
+        this.pointerId = init.pointerId ?? 1;
+        this.pointerType = init.pointerType ?? 'mouse';
+      }
+    },
+  );
   vi.stubGlobal('devicePixelRatio', 1);
-  vi.stubGlobal('ImageData', class {
-    data: Uint8ClampedArray;
-    constructor(public width: number, public height: number) { this.data = new Uint8ClampedArray(width * height * 4); }
-  });
+  vi.stubGlobal(
+    'ImageData',
+    class {
+      data: Uint8ClampedArray;
+      constructor(
+        public width: number,
+        public height: number,
+      ) {
+        this.data = new Uint8ClampedArray(width * height * 4);
+      }
+    },
+  );
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -202,5 +221,113 @@ describe('two-click line drawing', () => {
       expect(props.onStroke).not.toHaveBeenCalled();
       act(() => ref.current!.cancel());
     }
+  });
+});
+
+describe('touch editing and navigation', () => {
+  function touch(
+    canvas: HTMLElement,
+    type: 'pointerDown' | 'pointerMove' | 'pointerUp' | 'pointerCancel',
+    id: number,
+    x: number,
+    y: number,
+  ) {
+    fireEvent[type](canvas, {
+      pointerType: 'touch',
+      pointerId: id,
+      clientX: x,
+      clientY: y,
+      button: 0,
+    });
+  }
+  it.each(['pen', 'line', 'fill', 'polygon', 'origin', 'crop', 'rotate'] as const)(
+    'pinches and pans without committing a %s action',
+    (tool) => {
+      const { props, canvas, rerender } = setup();
+      rerender(<MapCanvas {...props} tool={tool} />);
+      touch(canvas, 'pointerDown', 1, 300, 250);
+      touch(canvas, 'pointerDown', 2, 500, 250);
+      touch(canvas, 'pointerMove', 2, 600, 300);
+      touch(canvas, 'pointerMove', 1, 250, 200);
+      expect(vi.mocked(props.onZoom).mock.calls.at(-1)![0]).toBeGreaterThan(8);
+      touch(canvas, 'pointerUp', 2, 600, 300);
+      touch(canvas, 'pointerMove', 1, 280, 230);
+      touch(canvas, 'pointerUp', 1, 280, 230);
+      for (const fn of [
+        props.onStroke,
+        props.onShape,
+        props.onClick,
+        props.onPick,
+        props.onOrigin,
+        props.onAngle,
+        props.onRect,
+      ])
+        expect(fn).not.toHaveBeenCalled();
+    },
+  );
+  it('keeps A during pinch zoom and uses the next tap as B', () => {
+    const { props, canvas } = setup();
+    touch(canvas, 'pointerDown', 1, 188, 168);
+    touch(canvas, 'pointerUp', 1, 188, 168);
+    touch(canvas, 'pointerDown', 1, 300, 300);
+    touch(canvas, 'pointerDown', 2, 500, 300);
+    touch(canvas, 'pointerMove', 2, 700, 300);
+    touch(canvas, 'pointerUp', 2, 700, 300);
+    touch(canvas, 'pointerUp', 1, 300, 300);
+    expect(props.onStroke).not.toHaveBeenCalled();
+    // 2x zoom about the old centroid (400,300), now at (500,300): origin (-12,-84).
+    touch(canvas, 'pointerDown', 3, -12 + 30.5 * 16, -84 + 25.5 * 16);
+    touch(canvas, 'pointerUp', 3, -12 + 30.5 * 16, -84 + 25.5 * 16);
+    const next = vi.mocked(props.onStroke).mock.calls[0][0];
+    expect(next.pixels[7 * 64 + 5]).toBe(0);
+    expect(next.pixels[25 * 64 + 30]).toBe(0);
+  });
+  it('pans with one finger between line endpoints instead of adding B on drag', () => {
+    const { props, canvas } = setup();
+    touch(canvas, 'pointerDown', 1, 188, 168);
+    touch(canvas, 'pointerUp', 1, 188, 168);
+    touch(canvas, 'pointerDown', 1, 350, 300);
+    touch(canvas, 'pointerMove', 1, 390, 320);
+    touch(canvas, 'pointerUp', 1, 390, 320);
+    expect(props.onStroke).not.toHaveBeenCalled();
+    touch(canvas, 'pointerDown', 1, 184 + 30.5 * 8, 128 + 25.5 * 8);
+    touch(canvas, 'pointerUp', 1, 184 + 30.5 * 8, 128 + 25.5 * 8);
+    expect(vi.mocked(props.onStroke).mock.calls[0][0].pixels[25 * 64 + 30]).toBe(0);
+  });
+  it('draws with one finger, but discards a preview when a second finger joins', () => {
+    const { props, canvas, rerender } = setup();
+    rerender(<MapCanvas {...props} tool="pen" />);
+    touch(canvas, 'pointerDown', 1, 188, 168);
+    touch(canvas, 'pointerMove', 1, 240, 200);
+    touch(canvas, 'pointerDown', 2, 400, 300);
+    touch(canvas, 'pointerUp', 2, 400, 300);
+    touch(canvas, 'pointerUp', 1, 240, 200);
+    expect(props.onStroke).not.toHaveBeenCalled();
+    touch(canvas, 'pointerDown', 1, 188, 168);
+    touch(canvas, 'pointerMove', 1, 240, 200);
+    touch(canvas, 'pointerUp', 1, 260, 210);
+    expect(props.onStroke).toHaveBeenCalledOnce();
+    expect(vi.mocked(props.onStroke).mock.calls[0][0].pixels[7 * 64 + 5]).toBe(0);
+  });
+  it('cancels an interrupted touch without a fill or partial stroke', () => {
+    const { props, canvas, rerender } = setup();
+    rerender(<MapCanvas {...props} tool="pen" />);
+    touch(canvas, 'pointerDown', 1, 188, 168);
+    touch(canvas, 'pointerMove', 1, 240, 200);
+    touch(canvas, 'pointerCancel', 1, 240, 200);
+    touch(canvas, 'pointerUp', 1, 240, 200);
+    expect(props.onStroke).not.toHaveBeenCalled();
+  });
+  it('allows touch navigation in read-only mode', () => {
+    const { props, canvas, rerender } = setup();
+    rerender(<MapCanvas {...props} tool="pen" disabled />);
+    touch(canvas, 'pointerDown', 1, 300, 300);
+    touch(canvas, 'pointerMove', 1, 340, 320);
+    touch(canvas, 'pointerUp', 1, 340, 320);
+    touch(canvas, 'pointerDown', 1, 300, 300);
+    touch(canvas, 'pointerDown', 2, 500, 300);
+    touch(canvas, 'pointerMove', 2, 600, 300);
+    expect(vi.mocked(props.onZoom).mock.calls.at(-1)![0]).toBe(12);
+    expect(props.onStroke).not.toHaveBeenCalled();
   });
 });

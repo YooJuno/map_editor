@@ -7,6 +7,7 @@ export type TutorialSetup = {
   color?: number;
   clear?: boolean;
   yaml?: boolean;
+  panel?: boolean;
 };
 const steps: { target: string; setup: TutorialSetup }[] = [
   { target: '.canvas-wrap', setup: { layer: 'map', tool: 'pen' } },
@@ -15,7 +16,7 @@ const steps: { target: string; setup: TutorialSetup }[] = [
     target: '[data-tour="tool-pen"]',
     setup: { layer: 'map', tool: 'pen', color: 0 },
   },
-  { target: '.brush-control', setup: { layer: 'map', tool: 'pen', color: 0 } },
+  { target: '.brush-menu, .brush-control', setup: { layer: 'map', tool: 'pen', color: 0 } },
   { target: '[data-tour="picker"]', setup: { layer: 'map', tool: 'picker' } },
   {
     target: '[data-tour="tool-line"]',
@@ -41,11 +42,11 @@ const steps: { target: string; setup: TutorialSetup }[] = [
   },
   {
     target: '[data-tour="speed-value"]',
-    setup: { layer: 'speed', tool: 'rect' },
+    setup: { layer: 'speed', tool: 'rect', panel: true },
   },
   {
     target: '[data-tour="mask-display"]',
-    setup: { layer: 'speed', tool: 'rect' },
+    setup: { layer: 'speed', tool: 'rect', panel: true },
   },
   {
     target: '[data-tour="mask-clear"]',
@@ -64,7 +65,7 @@ const steps: { target: string; setup: TutorialSetup }[] = [
     target: '[data-tour="layer-origin"]',
     setup: { layer: 'map', tool: 'origin' },
   },
-  { target: '[data-tour="metadata"]', setup: { layer: 'map', tool: 'pen' } },
+  { target: '[data-tour="metadata"]', setup: { layer: 'map', tool: 'pen', panel: true } },
   {
     target: '[data-tour="yaml"]',
     setup: { layer: 'map', tool: 'pen', yaml: true },
@@ -398,12 +399,66 @@ const zh = [
   ['下载', '将地图和遮罩的PGM/YAML对下载为ZIP。可重新上传，或解压后用于桌面版。'],
   ['账号与显示', '在账号菜单中更改语言和主题。完成后返回地图列表，也可从左侧创建共享工作区。'],
 ];
-export function tutorialSteps(lang: Lang) {
+const touchCopy: Record<Lang, Record<number, string>> = {
+  ko: {
+    3: '짧은 선과 px 값을 누르면 굵기 설정이 열립니다. 슬라이더나 숫자로 조절하세요.',
+    5: 'A점을 탭한 뒤 B점을 탭하세요. 사이에 두 손가락으로 확대·이동할 수 있고, X 버튼으로 취소합니다.',
+    7: '점 네 개를 탭한 뒤 완료를 누르세요. 첫 점을 다시 탭해도 닫힙니다. X 버튼은 취소입니다.',
+    9: '아래쪽 화살표로 실행을 취소하고 다시 실행하세요.',
+    10: '두 손가락으로 지도를 옮기고 확대·축소하세요. 화면 맞춤 버튼으로 전체 지도로 돌아옵니다.',
+    15: '금지 영역을 탭한 뒤 휴지통 버튼을 누르세요. 같은 값으로 연결된 픽셀이 함께 선택됩니다.',
+    16: '지도를 드래그하거나 속성의 슬라이더로 각도를 바꾸세요. 적용 버튼으로 확정합니다. 마스크도 함께 회전합니다.',
+    18: '좌표축 가운데를 드래그하면 원점이 이동합니다. 축 끝점이나 원호로 방향을 바꾼 뒤 적용하세요.',
+    21: '상단 이름을 탭해 수정하세요. 입력을 마치거나 다른 곳을 누르면 반영됩니다.',
+    23: '상단 ⋯ 메뉴에서 다운로드를 누르세요. 지도와 마스크를 담은 ZIP을 다시 업로드할 수도 있습니다.',
+    24: '계정 메뉴에서 언어와 테마를 바꾸세요. 지도 목록의 공간 선택 메뉴에서 공유 워크스페이스를 만들 수 있습니다.',
+  },
+  en: {
+    3: 'Tap the short stroke and px value to adjust the width with a slider or number.',
+    5: 'Tap A, then B. Pan or zoom with two fingers between taps. The X button cancels.',
+    7: 'Tap four vertices, then Finish. Tapping the first vertex also closes the polygon. X cancels.',
+    9: 'Use the arrows in the bottom toolbar to undo and redo.',
+    10: 'Pan and zoom with two fingers. Fit returns to the whole map.',
+    15: 'Tap a keepout region, then the trash button. Connected pixels with the same value are selected together.',
+    16: 'Drag the map or use the angle slider in Properties, then tap Apply. Masks rotate with the map.',
+    18: 'Drag the axis center to move the origin. Drag an endpoint or the arc to change yaw, then Apply.',
+    21: 'Tap the name at the top to edit it. Finish typing or tap elsewhere to apply.',
+    23: 'Choose Download from the top ⋯ menu. The ZIP includes the map and masks and can be uploaded again.',
+    24: 'Change language and theme in the account menu. Create shared workspaces from the space switcher in the map list.',
+  },
+  ja: {
+    3: '短い線とpx値をタップすると、スライダーや数値で太さを調整できます。',
+    5: 'A点、B点の順にタップ。途中で2本指で移動・拡大でき、Xボタンで取り消せます。',
+    7: '頂点を4つ追加して完了をタップ。最初の頂点をタップしても閉じられます。Xで取り消します。',
+    9: '下部の矢印で元に戻す・やり直しができます。',
+    10: '2本指で移動・拡大縮小します。全体表示ボタンで地図全体に戻れます。',
+    15: '進入禁止領域をタップし、ゴミ箱ボタンを押してください。同じ値で連結した画素を選択します。',
+    16: '地図のドラッグや設定の角度スライダーで回転し、適用をタップ。マスクも一緒に回転します。',
+    18: '軸の中央をドラッグして原点を移動。端点や円弧で方向を変え、適用してください。',
+    21: '上部の名前をタップして編集。入力を完了するか、別の場所をタップして反映します。',
+    23: '上部の⋯メニューからダウンロード。地図とマスク入りのZIPは再アップロードできます。',
+    24: 'アカウントメニューで言語とテーマを変更できます。地図一覧のスペース選択から共有ワークスペースを作れます。',
+  },
+  zh: {
+    3: '点击短线和px值，通过滑块或数字调整粗细。',
+    5: '依次点击A点和B点。中间可用双指移动或缩放，X按钮取消。',
+    7: '点击四个顶点后点击完成，也可点击第一个顶点闭合。X按钮取消。',
+    9: '使用底部工具栏的箭头撤销和重做。',
+    10: '用双指移动和缩放。点击适应画面按钮返回地图全图。',
+    15: '点击禁行区域，再点击垃圾桶按钮。同值且连通的像素会一起选中。',
+    16: '拖动地图或在属性中调整角度滑块，再点击应用。遮罩会一起旋转。',
+    18: '拖动坐标轴中心移动原点，拖动端点或圆弧改变方向，再点击应用。',
+    21: '点击顶部名称进行编辑。完成输入或点击其他位置即可应用。',
+    23: '在顶部⋯菜单中选择下载。包含地图和遮罩的ZIP可再次上传。',
+    24: '在账号菜单更改语言和主题，在地图列表的空间选择菜单创建共享工作区。',
+  },
+};
+export function tutorialSteps(lang: Lang, compact = false) {
   const copy = { ko, en, ja, zh }[lang];
   return steps.map((step, i) => ({
     ...step,
     title: copy[i][0],
-    body: copy[i][1],
+    body: (compact && touchCopy[lang][i]) || copy[i][1],
   }));
 }
 export const tutorialLabels = {

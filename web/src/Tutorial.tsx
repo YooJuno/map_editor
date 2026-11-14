@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useCompact } from './mobile';
 import type { Lang } from './i18n';
 import { tutorialLabels, tutorialSteps } from './tutorial';
 type Box = { left: number; top: number; width: number; height: number };
@@ -16,7 +17,11 @@ export function Tutorial({
   onStep: (index: number) => void;
   onClose: () => void;
 }) {
-  const steps = tutorialSteps(lang),
+  const compact = useCompact();
+  const panelStep = /metadata|yaml|mask-display|speed-value/.test(
+    tutorialSteps(lang)[index].target,
+  );
+  const steps = tutorialSteps(lang, compact),
     step = steps[index],
     labels = tutorialLabels[lang];
   const [box, setBox] = useState<Box | null>(null),
@@ -56,6 +61,9 @@ export function Tutorial({
       });
     };
     const frame = requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(step.target)
+        ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
       measure();
       const target = document.querySelector<HTMLElement>(step.target);
       observer = new ResizeObserver(measure);
@@ -77,6 +85,7 @@ export function Tutorial({
       <section
         ref={card}
         className="tutorial-card"
+        data-position={compact && panelStep ? 'top' : undefined}
         data-shortcuts="off"
         role="region"
         aria-label={labels.name}

@@ -19,6 +19,7 @@ Use the **?** button in the web app for a guided practice session with the bundl
 - Finish polygons with Enter, right-click, or the finish button. Esc cancels.
 - Select a mask region and press Delete to remove it.
 - Drag crop edges or corners; drag the origin center to move it and its axes to change yaw.
+- On phones, use two fingers to pan/zoom. Tap line endpoints; drag with the pen. Properties open as a sheet.
 - Dark/light themes and Korean, English, Japanese, and Simplified Chinese are available.
 
 ### Masks
@@ -31,7 +32,7 @@ On desktop, save modified masks before changing map geometry; on the web, transf
 
 ### Shared workspaces (web)
 
-Sign in with Google to save maps. Create a workspace from the sidebar and share its link.
+Sign in with Google to save maps. On mobile, edits are kept locally during sign-in; tap Save after returning. Create a workspace from the sidebar and share its link.
 Use a map's `⋯` menu to duplicate it, including its masks and settings.
 Joining requires administrator approval unless that setting is disabled.
 Only one session can edit a shared map at a time; other sessions can view and download it.
@@ -88,7 +89,7 @@ npm run deploy
 ```
 
 The configured project is `map-editor-juno` (Google Auth, Firestore, Hosting).
-For a different project, update `web/src/firebase.ts` and enable Google sign-in, authorized domains, and a Native Firestore database.
+For a different project, update `web/src/firebase.ts`, `web/src/login-flow.ts`, and the Hosting CSP. Enable Google sign-in, authorized domains, and a Native Firestore database. Use the app host as `authDomain` and authorize its `/__/auth/handler` OAuth redirect URI.
 For local authentication, authorize `localhost` / `127.0.0.1`, or run the Auth/Firestore emulators with `VITE_USE_EMULATORS=true`.
 
 Web changes on `main` deploy through GitHub Actions using Workload Identity Federation.

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { forwardRef, useImperativeHandle } from 'react';
 const f = vi.hoisted(() => ({
@@ -26,6 +26,10 @@ const f = vi.hoisted(() => ({
     },
   },
   save: vi.fn(),
+  login: vi.fn(),
+  draftRead: vi.fn(),
+  draftWrite: vi.fn(),
+  draftDelete: vi.fn(),
   lease: vi.fn(),
   reserve: vi.fn(() => 'new-map'),
   extraNames: [] as string[],
@@ -44,7 +48,7 @@ vi.mock('../src/firebase', () => ({
   db: {},
   finishLogin: async () => null,
   refreshAdminRole: async () => f.global,
-  login: async () => {},
+  login: (...args: any[]) => f.login(...args),
   logout: async () => {},
   watchMaps: (update: (rows: any[]) => void) => {
     update([
@@ -113,15 +117,24 @@ vi.mock('../src/Editor', async (importOriginal) => {
     }),
   };
 });
+vi.mock('../src/login-draft', () => ({
+  readLoginDraft: (...args: any[]) => f.draftRead(...args),
+  writeLoginDraft: (...args: any[]) => f.draftWrite(...args),
+  deleteLoginDraft: (...args: any[]) => f.draftDelete(...args),
+}));
 vi.mock('../src/jobs', () => ({
   job: async (task: { action: string }) =>
-    task.action === 'import' ? { ...f.map } : new Uint8Array(4),
+    ['import', 'unpack'].includes(task.action) ? { ...f.map } : new Uint8Array(4),
 }));
 import App from '../src/App';
 beforeEach(() => {
   cleanup();
   localStorage.clear();
   window.history.replaceState(null, '', '/');
+  f.login.mockReset().mockResolvedValue(true);
+  f.draftRead.mockReset();
+  f.draftWrite.mockReset().mockResolvedValue('draft-key');
+  f.draftDelete.mockReset().mockResolvedValue(undefined);
   f.global = false;
   f.workspaces = [];
   f.leases = [];
@@ -309,7 +322,6 @@ describe('map duplication', () => {
   });
 });
 
-
 it('cancels duplication if the signed-in account changes while loading the source', async () => {
   const { auth } = await import('../src/firebase');
   const original = auth.currentUser;
@@ -317,11 +329,133 @@ it('cancels duplication if the signed-in account changes while loading the sourc
     render(<App />);
     await screen.findByRole('button', { name: 'Office', exact: true });
     fireEvent.click(screen.getByLabelText('More'));
-    fireEvent.click(screen.getByRole('button', {name: '복제', exact: true}));
+    fireEvent.click(screen.getByRole('button', { name: '복제', exact: true }));
     Object.assign(auth, { currentUser: { uid: 'different-account' } });
     await screen.findByText('로그인 계정이 바뀌었습니다. 다시 시도하세요.');
     expect(f.save).not.toHaveBeenCalled();
   } finally {
     Object.assign(auth, { currentUser: original });
   }
+});
+
+afterEach(() => vi.unstubAllGlobals());
+describe('mobile layout and redirect recovery', () => {
+  it('resizes for the on-screen keyboard without forcing the page zoom back', async () => {
+    const view = Object.assign(new EventTarget(), { height: 800, scale: 1 });
+    vi.stubGlobal('visualViewport', view);
+    const { unmount } = render(<App />);
+    await screen.findByRole('button', { name: /^Office(?:\s|$)/ });
+    view.height = 480;
+    fireEvent(view, new Event('resize'));
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('480px');
+    view.scale = 2;
+    view.height = 240;
+    fireEvent(view, new Event('resize'));
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('480px');
+    unmount();
+    expect(document.documentElement.style.getPropertyValue('--app-height')).toBe('');
+  });
+  function compact() {
+    vi.stubGlobal('matchMedia', () => ({
+      matches: true,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  }
+  it('moves download and upload into an outside-dismissible editor menu', async () => {
+    compact();
+    render(<App />);
+    await open();
+    expect(screen.queryByRole('button', { name: '다운로드 · ZIP' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '더 보기' }));
+    expect(screen.getByRole('dialog', { name: '더 보기' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '다운로드 · ZIP' })).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('dialog', { name: '더 보기' })).toBeNull();
+  });
+  it('opens a readable workspace switcher and closes it after a selection or Escape', async () => {
+    compact();
+    f.workspaces = [
+      { id: 'team', name: 'Robot team', adminIds: ['alice'], memberIds: ['alice'], deleted: false },
+    ];
+    render(<App />);
+    const trigger = await screen.findByRole('button', { name: '공유 워크스페이스' });
+    fireEvent.click(trigger);
+    expect(document.getElementById('library-navigation')!.classList.contains('open')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Robot team' }));
+    expect(trigger.textContent).toBe('Robot team');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+  it('restores a redirect checkpoint locally without writing to any account', async () => {
+    window.history.replaceState(null, '', '/?authDraft=abc');
+    f.draftRead.mockResolvedValue({ bytes: Uint8Array.of(1, 2), name: 'Office' });
+    render(<App />);
+    expect(
+      ((await screen.findByRole('textbox', { name: '지도 이름' })) as HTMLInputElement).value,
+    ).toBe('Office');
+    await waitFor(() => expect(f.draftDelete).toHaveBeenCalledWith('abc'));
+    expect(location.search).toBe('');
+    expect(f.save).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('button', { name: '저장', exact: true }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+  it('checkpoints a local map before redirecting and waits for another Save after return', async () => {
+    const { auth } = await import('../src/firebase'),
+      previous = auth.currentUser;
+    Object.assign(auth, { currentUser: null });
+    try {
+      compact();
+      render(<App />);
+      await open();
+      fireEvent.change(screen.getByRole('textbox', { name: '지도 이름' }), {
+        target: { value: 'Unsaved mobile map' },
+      });
+      f.login.mockImplementation(async (before: () => Promise<void>) => {
+        await before();
+        return false;
+      });
+      fireEvent.click(screen.getByRole('button', { name: '저장', exact: true }));
+      await waitFor(() => expect(location.search).toContain('authDraft=draft-key'));
+      expect(f.draftWrite).toHaveBeenCalledWith(expect.any(Uint8Array), 'Unsaved mobile map');
+      expect(f.save).not.toHaveBeenCalled();
+      const unload = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(unload);
+      expect(unload.defaultPrevented).toBe(false);
+    } finally {
+      Object.assign(auth, { currentUser: previous });
+    }
+  });
+  it('stays in the editor when local storage cannot protect the map', async () => {
+    const { auth } = await import('../src/firebase'),
+      previous = auth.currentUser;
+    Object.assign(auth, { currentUser: null });
+    try {
+      render(<App />);
+      await open();
+      f.login.mockImplementation(async (before: () => Promise<void>) => {
+        await before();
+        return false;
+      });
+      f.draftWrite.mockRejectedValue(Error('Quota'));
+      fireEvent.change(screen.getByRole('textbox', { name: '지도 이름' }), {
+        target: { value: 'Keep my map' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: '저장', exact: true }));
+      await screen.findByText(/편집 내용을 임시 보관하지 못했습니다/);
+      expect(location.search).toBe('');
+      expect(f.save).not.toHaveBeenCalled();
+      expect((screen.getByRole('textbox', { name: '지도 이름' }) as HTMLInputElement).value).toBe(
+        'Keep my map',
+      );
+      const unload = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(unload);
+      expect(unload.defaultPrevented).toBe(true);
+    } finally {
+      Object.assign(auth, { currentUser: previous });
+    }
+  });
 });

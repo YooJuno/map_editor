@@ -29,11 +29,12 @@ import {
 } from 'firebase/firestore';
 import { MAX_CLOUD_BYTES, type MapDoc } from './map';
 import { job } from './jobs';
+import { authHost, googleLogin, mobileLogin } from './login-flow';
 
 const emulators = import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 'true';
 const app = initializeApp({
   apiKey: 'AIzaSyDh9mA7VvLKDLmzEj7uMLR9MsD0c6j6yP4',
-  authDomain: 'map-editor-juno.firebaseapp.com',
+  authDomain: authHost(typeof location === 'undefined' ? '' : location.hostname),
   projectId: emulators ? 'demo-map-editor' : 'map-editor-juno',
   storageBucket: 'map-editor-juno.firebasestorage.app',
   messagingSenderId: '687727395742',
@@ -48,15 +49,13 @@ if (emulators) {
 }
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
-export async function login() {
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (error) {
-    if ((error as { code?: string }).code === 'auth/popup-blocked')
-      await signInWithRedirect(auth, provider);
-    else throw error;
-  }
-}
+export const login = (beforeRedirect: () => Promise<void> = async () => {}) =>
+  googleLogin(
+    !emulators && mobileLogin(navigator),
+    () => signInWithPopup(auth, provider),
+    () => signInWithRedirect(auth, provider),
+    beforeRedirect,
+  );
 export const finishLogin = () => getRedirectResult(auth);
 export const logout = () => signOut(auth);
 export type MapScope = { workspaceId: string; sessionId: string };

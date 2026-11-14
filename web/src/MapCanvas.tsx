@@ -52,6 +52,7 @@ type Props = {
   onAngle: (angle: number) => void;
   onRect: (rect: Rect | null) => void;
   onPoints: (count: number) => void;
+  onLineStart?: (active: boolean) => void;
   onZoom: (zoom: number) => void;
   onPosition: (point: Point | null) => void;
 };
@@ -90,7 +91,7 @@ function originPixel(doc: MapDoc): Point {
     y: doc.height - (x * Math.sin(a) - y * Math.cos(a)) / r,
   };
 }
-function originRotationHit(point: Point, doc: MapDoc, zoom: number) {
+function originRotationHit(point: Point, doc: MapDoc, zoom: number, tolerance = 12) {
   const o = originPixel(doc),
     yaw = doc.meta.origin[2];
   for (const offset of [0, -Math.PI / 2])
@@ -100,13 +101,13 @@ function originRotationHit(point: Point, doc: MapDoc, zoom: number) {
         point.y - o.y - (Math.sin(yaw + offset) * 45) / zoom,
       ) *
         zoom <
-      12
+      tolerance
     )
       return true;
   const angle = Math.atan2(point.y - o.y, point.x - o.x) - yaw;
   const relative = Math.atan2(Math.sin(angle), Math.cos(angle));
   return (
-    Math.abs(Math.hypot(point.x - o.x, point.y - o.y) * zoom - 26) < 8 &&
+    Math.abs(Math.hypot(point.x - o.x, point.y - o.y) * zoom - 26) < (tolerance * 2) / 3 &&
     relative >= -Math.PI / 2 - 0.1 &&
     relative <= 0.1
   );
@@ -146,6 +147,12 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       lineLayer: Layer = 'map',
       points: Point[] = [],
       positionAt = 0;
+    const touches = new Map<number, Point>();
+    let pendingTouch: PointerEvent | null = null,
+      touchStarted = false,
+      touchBlocked = false;
+    let pinch: { center: Point; distance: number } | null = null;
+    let baseline: { meta: Meta; angle: number; rect: Rect | null } | null = null;
     const camera: Camera = { x: 0, y: 0, zoom: 1 };
     const caches = new Map<
       Layer,
@@ -156,7 +163,8 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
     };
     refresh.current = () => {
       const p = latest.current;
-      if (
+      if (p.disabled && drag && drag.mode !== 'pan') clear();
+      else if (
         lineStart &&
         (p.doc !== lineDoc ||
           p.layer !== lineLayer ||
@@ -236,6 +244,12 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       drag = null;
       lineStart = null;
       lineDoc = null;
+      latest.current.onLineStart?.(false);
+      touches.clear();
+      pendingTouch = null;
+      touchStarted = touchBlocked = false;
+      pinch = null;
+      baseline = null;
       points = [];
       latest.current.onPoints(0);
       request();
@@ -407,15 +421,15 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       if (bytes.some((v, i) => v !== (old?.[i] || 0))) p.onStroke(doc);
       else caches.clear();
     };
-    const down = (e: PointerEvent) => {
+    const down = (e: PointerEvent, capture = true) => {
       const p = latest.current;
       if (e.button !== 0 && e.button !== 1) return;
-      canvas.focus();
+      canvas.focus({ preventScroll: true });
       if (p.disabled && e.button !== 1 && !space && p.tool !== 'hand') return;
       const at = imagePoint(e),
         screen = screenPoint(e);
       hover = at;
-      canvas.setPointerCapture(e.pointerId);
+      if (capture) canvas.setPointerCapture(e.pointerId);
       if (e.button === 1 || space || p.tool === 'hand')
         drag = { start: at, last: at, screen, mode: 'pan' };
       else if (p.tool === 'rotate')
@@ -430,9 +444,13 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       else if (p.tool === 'origin') {
         const o = originPixel(p.doc),
           a = p.doc.meta.origin[2];
-        const axisOffset = originRotationHit(at, p.doc, camera.zoom)
-          ? Math.atan2(at.y - o.y, at.x - o.x) - a
-          : undefined;
+        const centerHit =
+          e.pointerType === 'touch' && Math.hypot(at.x - o.x, at.y - o.y) * camera.zoom < 18;
+        const axisOffset =
+          !centerHit &&
+          originRotationHit(at, p.doc, camera.zoom, e.pointerType === 'touch' ? 22 : 12)
+            ? Math.atan2(at.y - o.y, at.x - o.x) - a
+            : undefined;
         drag = {
           start: o,
           last: at,
@@ -443,7 +461,7 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
         if (axisOffset === undefined) p.onOrigin(originAt(at, p.doc));
       } else if (p.tool === 'crop') {
         const r = p.rect,
-          tolerance = 8 / camera.zoom;
+          tolerance = (e.pointerType === 'touch' ? 18 : 8) / camera.zoom;
         let mode = 'new';
         if (
           r &&
@@ -470,7 +488,8 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       else if (p.tool === 'polygon') {
         if (
           points.length >= 3 &&
-          Math.hypot(points[0].x - at.x, points[0].y - at.y) * camera.zoom < 9
+          Math.hypot(points[0].x - at.x, points[0].y - at.y) * camera.zoom <
+            (e.pointerType === 'touch' ? 18 : 9)
         )
           finish();
         else {
@@ -483,11 +502,13 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
           lineStart = at;
           lineDoc = p.doc;
           lineLayer = p.layer;
+          p.onLineStart?.(true);
         } else {
           const start = lineStart,
             next = scratch();
           lineStart = null;
           lineDoc = null;
+          p.onLineStart?.(false);
           stroke(layerBytes(next, p.layer)!, next.width, next.height, start, at, p.size, p.value);
           commitStroke(next);
         }
@@ -609,7 +630,8 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       const p = latest.current,
         finished = drag!;
       drag = null;
-      if (finished.scratch) commitStroke(finished.scratch);
+      if (p.disabled) caches.clear();
+      else if (finished.scratch) commitStroke(finished.scratch);
       else if (finished.mode === 'rect') {
         const r = rectOf(finished.start, finished.last);
         p.onShape([
@@ -621,6 +643,124 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       }
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
       request();
+    };
+    // Defer the first touch until its intent is clear. A second finger must
+    // never place a line endpoint, fill a region, or commit a partial stroke.
+    const pinchState = () => {
+      const [a, b] = [...touches.values()];
+      return {
+        center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      };
+    };
+    const abortDrag = () => {
+      if (drag?.scratch) caches.clear();
+      if (
+        baseline &&
+        drag &&
+        [
+          'origin',
+          'axis',
+          'rotate',
+          'new',
+          'move',
+          'n',
+          's',
+          'e',
+          'w',
+          'ne',
+          'nw',
+          'se',
+          'sw',
+        ].includes(drag.mode)
+      ) {
+        const p = latest.current;
+        p.onOrigin(baseline.meta);
+        p.onAngle(baseline.angle);
+        p.onRect(baseline.rect);
+      }
+      drag = null;
+      request();
+    };
+    const pointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') {
+        down(e);
+        return;
+      }
+      e.preventDefault();
+      canvas.focus({ preventScroll: true });
+      canvas.setPointerCapture(e.pointerId);
+      touches.set(e.pointerId, screenPoint(e));
+      if (touches.size === 1) {
+        pendingTouch = e;
+        touchStarted = touchBlocked = false;
+        const p = latest.current;
+        baseline = { meta: p.doc.meta, angle: p.angle, rect: p.rect };
+      } else {
+        abortDrag();
+        pendingTouch = null;
+        touchBlocked = true;
+        pinch = pinchState();
+      }
+    };
+    const pointerMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') {
+        move(e);
+        return;
+      }
+      if (!touches.has(e.pointerId)) return;
+      e.preventDefault();
+      touches.set(e.pointerId, screenPoint(e));
+      if (touches.size >= 2 && pinch) {
+        const next = pinchState(),
+          oldZoom = camera.zoom;
+        const x = (pinch.center.x - camera.x) / oldZoom,
+          y = (pinch.center.y - camera.y) / oldZoom;
+        camera.zoom = Math.max(0.005, Math.min(80, (oldZoom * next.distance) / pinch.distance));
+        camera.x = next.center.x - x * camera.zoom;
+        camera.y = next.center.y - y * camera.zoom;
+        pinch = next;
+        latest.current.onZoom(camera.zoom);
+        hover = null;
+        request();
+        return;
+      }
+      if (touchBlocked || !pendingTouch) return;
+      if (!touchStarted) {
+        const start = screenPoint(pendingTouch),
+          at = screenPoint(e);
+        if (Math.hypot(at.x - start.x, at.y - start.y) < 6) return;
+        touchStarted = true;
+        const p = latest.current;
+        if (
+          p.disabled ||
+          ['line', 'polygon', 'fill', 'picker', 'select', 'hand'].includes(p.tool)
+        ) {
+          const image = imagePoint(pendingTouch);
+          drag = { start: image, last: image, screen: start, mode: 'pan' };
+        } else down(pendingTouch, false);
+      }
+      move(e);
+    };
+    const pointerUp = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') {
+        up(e);
+        return;
+      }
+      if (!touches.has(e.pointerId)) return;
+      e.preventDefault();
+      if (!touchBlocked && touches.size === 1) {
+        if (!touchStarted) down(e, false);
+        up(e);
+      }
+      touches.delete(e.pointerId);
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      if (touchBlocked) pinch = touches.size >= 2 ? pinchState() : null;
+      if (!touches.size) {
+        pendingTouch = null;
+        touchStarted = touchBlocked = false;
+        baseline = null;
+      }
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -673,7 +813,13 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       latest.current.onPosition(null);
       request();
     };
-    const cancel = () => clear();
+    const cancel = () => {
+      abortDrag();
+      clear();
+    };
+    const blur = () => {
+      space = false;
+    };
     const observer = new ResizeObserver((entries) => {
       const box = entries[0].contentRect;
       width = box.width;
@@ -686,30 +832,29 @@ export const MapCanvas = forwardRef<CanvasHandle, Props>(function MapCanvas(prop
       } else request();
     });
     observer.observe(canvas);
-    canvas.addEventListener('pointerdown', down);
-    canvas.addEventListener('pointermove', move);
-    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointerdown', pointerDown);
+    canvas.addEventListener('pointermove', pointerMove);
+    canvas.addEventListener('pointerup', pointerUp);
     canvas.addEventListener('pointercancel', cancel);
     canvas.addEventListener('pointerleave', leave);
     canvas.addEventListener('wheel', wheel, { passive: false });
     canvas.addEventListener('contextmenu', context);
     canvas.addEventListener('keydown', keydown);
     window.addEventListener('keyup', keyup);
-    canvas.addEventListener('blur', () => {
-      space = false;
-    });
+    canvas.addEventListener('blur', blur);
     return () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
-      canvas.removeEventListener('pointerdown', down);
-      canvas.removeEventListener('pointermove', move);
-      canvas.removeEventListener('pointerup', up);
+      canvas.removeEventListener('pointerdown', pointerDown);
+      canvas.removeEventListener('pointermove', pointerMove);
+      canvas.removeEventListener('pointerup', pointerUp);
       canvas.removeEventListener('pointercancel', cancel);
       canvas.removeEventListener('pointerleave', leave);
       canvas.removeEventListener('wheel', wheel);
       canvas.removeEventListener('contextmenu', context);
       canvas.removeEventListener('keydown', keydown);
       window.removeEventListener('keyup', keyup);
+      canvas.removeEventListener('blur', blur);
       caches.clear();
     };
   }, []);

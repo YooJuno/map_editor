@@ -1,5 +1,13 @@
 export type Lang = 'ko' | 'en' | 'ja' | 'zh';
 const ko = {
+  more: '더 보기',
+  draftRestored: '편집 내용을 복원했습니다. 저장 버튼으로 보관하세요.',
+  draftMissing: '임시 지도를 찾을 수 없습니다. 원래 편집하던 브라우저에서 다시 열어 주세요.',
+  draftFailed: '편집 내용을 임시 보관하지 못했습니다. ZIP으로 다운로드한 뒤 로그인하세요.',
+  touchLineHint: 'A점 → B점을 탭하세요.',
+  touchPolygonHint: '점을 찍고 완료를 누르세요.',
+  touchSelectHint: '구역을 탭한 뒤 삭제 버튼을 누르세요.',
+
   maps: '내 지도',
   workspaces: '공유 워크스페이스',
   createWorkspace: '워크스페이스 만들기',
@@ -119,6 +127,15 @@ const ko = {
 };
 type Key = keyof typeof ko;
 const en: Record<Key, string> = {
+  more: 'More',
+  draftRestored: 'Your edits were restored. Tap Save to keep them.',
+  draftMissing:
+    'The temporary map is unavailable. Reopen this page in the browser where you were editing.',
+  draftFailed: 'Could not keep a local copy. Download your ZIP before signing in.',
+  touchLineHint: 'Tap A, then tap B.',
+  touchPolygonHint: 'Tap vertices, then tap Finish.',
+  touchSelectHint: 'Tap a region, then tap Delete.',
+
   maps: 'My maps',
   workspaces: 'Shared workspaces',
   createWorkspace: 'Create workspace',
@@ -238,6 +255,13 @@ const en: Record<Key, string> = {
 };
 const ja: Record<Key, string> = {
   ...en,
+  more: 'その他',
+  draftRestored: '編集内容を復元しました。保存ボタンで保存してください。',
+  draftMissing: '一時保存した地図が見つかりません。編集していたブラウザで開き直してください。',
+  draftFailed: '一時保存できませんでした。ZIPをダウンロードしてからログインしてください。',
+  touchLineHint: 'A点、B点の順にタップ。',
+  touchPolygonHint: '頂点を追加し、完了をタップ。',
+  touchSelectHint: '領域をタップし、削除ボタンを押してください。',
   maps: 'マイマップ',
   workspaces: '共有ワークスペース',
   createWorkspace: 'ワークスペースを作成',
@@ -356,6 +380,13 @@ const ja: Record<Key, string> = {
 };
 const zh: Record<Key, string> = {
   ...en,
+  more: '更多',
+  draftRestored: '已恢复编辑内容。请点击保存。',
+  draftMissing: '找不到临时地图。请在原来编辑的浏览器中重新打开。',
+  draftFailed: '无法临时保存。请先下载ZIP，再登录。',
+  touchLineHint: '依次点击A点和B点。',
+  touchPolygonHint: '点击顶点，然后点击完成。',
+  touchSelectHint: '点击区域，然后点击删除按钮。',
   maps: '我的地图',
   workspaces: '共享工作区',
   createWorkspace: '创建工作区',

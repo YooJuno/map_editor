@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight,
+  ChevronDown,
   CopyPlus,
   Download,
   HardDrive,
@@ -63,7 +64,32 @@ function formatBytes(bytes: number) {
 }
 export function Library(p: Props) {
   const { t } = p,
-    [search, setSearch] = useState('');
+    [search, setSearch] = useState(''),
+    [navOpen, setNavOpen] = useState(false),
+    nav = useRef<HTMLElement>(null),
+    navButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!navOpen) return;
+    const outside = (e: PointerEvent) => {
+      if (
+        !nav.current?.contains(e.target as Node) &&
+        !navButton.current?.contains(e.target as Node)
+      )
+        setNavOpen(false);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setNavOpen(false);
+        navButton.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [navOpen]);
   const workspace = p.workspaces.find((w) => w.id === p.workspaceId),
     maps = p.records.filter(
       (r) =>
@@ -90,7 +116,14 @@ export function Library(p: Props) {
   }, []);
   return (
     <div className="library">
-      <aside className="library-sidebar">
+      <aside
+        id="library-navigation"
+        ref={nav}
+        className={`library-sidebar${navOpen ? ' open' : ''}`}
+        onClick={(e) => {
+          if ((e.target as Element).closest('button')) setNavOpen(false);
+        }}
+      >
         <div className="sidebar-heading">{t('maps')}</div>
         <button
           className={!p.workspaceId && !p.trash ? 'nav-item active' : 'nav-item'}
@@ -160,7 +193,19 @@ export function Library(p: Props) {
       </aside>
       <main className="library-main">
         <div className="library-heading">
-          <div>
+          <div className="library-title">
+            <button
+              className="space-switcher"
+              ref={navButton}
+              aria-label={t('workspaces')}
+              aria-expanded={navOpen}
+              aria-controls="library-navigation"
+              onClick={() => setNavOpen(!navOpen)}
+            >
+              {p.trash ? <Trash2 size={18} /> : workspace ? <Users size={18} /> : <Map size={18} />}
+              <span>{workspace?.name || t(p.trash ? 'trash' : 'maps')}</span>
+              <ChevronDown size={16} />
+            </button>
             <h1>{workspace?.name || t(p.trash ? 'trash' : 'maps')}</h1>
             {p.trash && <p>{t('trashHint')}</p>}
           </div>
@@ -184,9 +229,15 @@ export function Library(p: Props) {
                 )}
               </>
             )}
-            <button className="primary" disabled={p.busy} onClick={p.onUpload}>
+            <button
+              className="primary library-upload"
+              aria-label={t('upload')}
+              title={t('upload')}
+              disabled={p.busy}
+              onClick={p.onUpload}
+            >
               <Upload size={17} />
-              {t('upload')}
+              <span>{t('upload')}</span>
             </button>
           </div>
         </div>

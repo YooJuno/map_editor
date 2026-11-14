@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   LockKeyhole,
   Save,
+  MoreHorizontal,
   Upload,
   X,
 } from 'lucide-react';
@@ -49,6 +50,9 @@ import { translator, type Lang } from './i18n';
 import { job } from './jobs';
 import { Tutorial } from './Tutorial';
 import { Downloads } from './Downloads';
+import { useCompact } from './mobile';
+import { Popover } from './Popover';
+import { writeLoginDraft, readLoginDraft, deleteLoginDraft } from './login-draft';
 import { tutorialLabels, tutorialSteps } from './tutorial';
 
 function thumbnail(doc: MapDoc) {
@@ -106,6 +110,22 @@ function preference(key: string, fallback: string) {
 }
 
 export default function App() {
+  const compact = useCompact(),
+    redirecting = useRef(false);
+  useEffect(() => {
+    const view = window.visualViewport;
+    if (!view) return;
+    const resized = () => {
+      if (view.scale === 1)
+        document.documentElement.style.setProperty('--app-height', `${view.height}px`);
+    };
+    resized();
+    view.addEventListener('resize', resized);
+    return () => {
+      view.removeEventListener('resize', resized);
+      document.documentElement.style.removeProperty('--app-height');
+    };
+  }, []);
   const [lang, setLang] = useState<Lang>(() => {
     const value = preference('map-editor-language', 'ko');
     return ['ko', 'en', 'ja', 'zh'].includes(value) ? (value as Lang) : 'ko';
@@ -320,7 +340,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (current && (unsaved || busy)) {
+      if (!redirecting.current && current && (unsaved || busy)) {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -366,6 +386,53 @@ export default function App() {
     setLeaseHeld(!!context);
     historyRef.current = { past: [], future: [] };
     renderHistory((v) => v + 1);
+  };
+  useEffect(() => {
+    const key = new URLSearchParams(location.search).get('authDraft');
+    if (!key) return;
+    void run(async () => {
+      const checkpoint = await readLoginDraft(key);
+      if (!checkpoint) throw Error(t('draftMissing'));
+      const map = await job<MapDoc>({ action: 'unpack', bytes: checkpoint.bytes });
+      reset({ ...map, name: checkpoint.name });
+      closeDesktop();
+      const url = new URL(location.href);
+      url.searchParams.delete('authDraft');
+      window.history.replaceState(null, '', url);
+      void deleteLoginDraft(key).catch(() => {});
+      setToast(t('draftRestored'));
+    });
+  }, []);
+  const signIn = async (prepared?: MapDoc) => {
+    let key: string | undefined;
+    try {
+      return await login(async () => {
+        const doc = currentRef.current;
+        if (doc && tutorialIndex === null) {
+          const map = prepared ?? (await editor.current!.prepare());
+          const name = nameDraft?.trim() || map.name;
+          const bytes = await job<Uint8Array>({ action: 'pack', doc: { ...map, name } });
+          try {
+            key = await writeLoginDraft(bytes, name);
+          } catch {
+            throw Error(t('draftFailed'));
+          }
+          const url = new URL(location.href);
+          url.searchParams.set('authDraft', key);
+          window.history.replaceState(null, '', url);
+        }
+        redirecting.current = true;
+      });
+    } catch (error) {
+      redirecting.current = false;
+      if (key) {
+        const url = new URL(location.href);
+        url.searchParams.delete('authDraft');
+        window.history.replaceState(null, '', url);
+        void deleteLoginDraft(key).catch(() => {});
+      }
+      throw error;
+    }
   };
   const undo = () => {
     if (!current || busyRef.current || readOnly || !historyRef.current.past.length) return;
@@ -471,7 +538,7 @@ export default function App() {
       setToast(tutorialLabels[lang].saved);
       return;
     }
-    if (!auth.currentUser) await login();
+    if (!auth.currentUser && !(await signIn(map))) return;
     const result = await saveMap(map, thumbnail(map), cloud, editContext);
     setCloud(result);
     setDirty(false);
@@ -607,7 +674,7 @@ export default function App() {
         openFiles(e.dataTransfer.files);
       }}
     >
-      <header className="app-header">
+      <header className={`app-header${current ? ' editing' : ''}`}>
         <a
           className="brand"
           href="#"
@@ -668,21 +735,26 @@ export default function App() {
         <div className="spacer" />
         {current && (
           <>
-            <IconButton
-              title={t('upload')}
-              disabled={busy || tutorialIndex !== null}
-              onClick={() => setUpload(true)}
-            >
-              <Upload size={18} />
-            </IconButton>
-            <IconButton
-              data-tour="download"
-              title={`${t('download')} · ZIP`}
-              disabled={busy}
-              onClick={() => download()}
-            >
-              <Download size={18} />
-            </IconButton>
+            {!compact && (
+              <>
+                <IconButton
+                  title={t('upload')}
+                  disabled={busy || tutorialIndex !== null}
+                  onClick={() => setUpload(true)}
+                >
+                  <Upload size={18} />
+                </IconButton>
+                <IconButton
+                  data-tour="download"
+                  title={`${t('download')} · ZIP`}
+                  disabled={busy}
+                  onClick={() => download()}
+                >
+                  <Download size={18} />
+                </IconButton>
+              </>
+            )}
+
             <button
               className="primary save-button"
               aria-label={t('save')}
@@ -695,13 +767,38 @@ export default function App() {
             <span className="header-divider" />
           </>
         )}
-        <IconButton
-          title={tutorialLabels[lang].name}
-          disabled={busy || tutorialIndex !== null}
-          onClick={startTutorial}
-        >
-          <CircleHelp size={19} />
-        </IconButton>
+        {current && compact && (
+          <Popover
+            label={t('more')}
+            trigger={<MoreHorizontal size={21} />}
+            tour="download"
+            disabled={busy}
+            className="editor-menu"
+          >
+            <button disabled={tutorialIndex !== null} onClick={() => setUpload(true)}>
+              <Upload size={17} />
+              {t('upload')}
+            </button>
+            <button onClick={() => download()}>
+              <Download size={17} />
+              {t('download')} · ZIP
+            </button>
+            <button disabled={tutorialIndex !== null} onClick={startTutorial}>
+              <CircleHelp size={17} />
+              {tutorialLabels[lang].name}
+            </button>
+          </Popover>
+        )}
+        {(!current || !compact) && (
+          <IconButton
+            title={tutorialLabels[lang].name}
+            disabled={busy || tutorialIndex !== null}
+            onClick={startTutorial}
+          >
+            <CircleHelp size={19} />
+          </IconButton>
+        )}
+
         <AccountMenu
           user={user}
           serviceAdmin={globalAdmin}
@@ -711,7 +808,11 @@ export default function App() {
           busy={busy || !authReady}
           onLang={setLang}
           onTheme={setTheme}
-          onLogin={() => void run(login)}
+          onLogin={() =>
+            void run(async () => {
+              await signIn();
+            })
+          }
           onLogout={signout}
         />
       </header>
@@ -777,7 +878,11 @@ export default function App() {
           onWorkspaceDialog={setWorkspaceDialog}
           onRetry={() => setReload((v) => v + 1)}
           onUpload={() => setUpload(true)}
-          onLogin={() => void run(login)}
+          onLogin={() =>
+            void run(async () => {
+              await signIn();
+            })
+          }
           onDesktop={showDesktop}
           onOpen={openRecord}
           onRename={(record) => setRename({ id: record.id, name: record.name })}
@@ -914,7 +1019,11 @@ export default function App() {
           globalAdmin={globalAdmin}
           busy={busy}
           run={run}
-          onLogin={() => void run(login)}
+          onLogin={() =>
+            void run(async () => {
+              await signIn();
+            })
+          }
           onClose={clearJoin}
           onJoined={joined}
         />

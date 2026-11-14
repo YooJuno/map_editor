@@ -23,6 +23,7 @@ import {
   Check,
   SlidersHorizontal,
   ChevronRight,
+  Eraser,
 } from 'lucide-react';
 import { MapCanvas, type CanvasHandle, type Selection, type Tool } from './MapCanvas';
 import { job } from './jobs';
@@ -39,6 +40,8 @@ import {
 } from './map';
 import type { Translate } from './i18n';
 import type { TutorialSetup } from './tutorial';
+import { useCompact } from './mobile';
+import { Popover } from './Popover';
 export function IconButton({
   title,
   active,
@@ -141,6 +144,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
   { doc, t, disabled, canUndo, canRedo, onUndo, onRedo, onChange, onDraft, run },
   ref,
 ) {
+  const compact = useCompact();
   const [layer, setActiveLayer] = useState<Layer>('map'),
     [tool, setTool] = useState<Tool>('pen');
   const [size, setSize] = useState(8),
@@ -157,7 +161,11 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     [points, setPoints] = useState(0),
     [zoom, setZoom] = useState(1),
     [position, setPosition] = useState<Point | null>(null),
-    [panel, setPanel] = useState(true);
+    [panel, setPanel] = useState(!compact),
+    [linePending, setLinePending] = useState(false);
+  useEffect(() => {
+    setPanel(!compact);
+  }, [compact]);
   const canvas = useRef<CanvasHandle>(null),
     yamlDetails = useRef<HTMLDetailsElement>(null),
     previousTool = useRef<Tool>('pen');
@@ -224,7 +232,12 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       setAngle(0);
       setRect(null);
       setMeta(doc.meta);
-      setPanel(true);
+      setPanel(
+        !compact ||
+          !!setup.panel ||
+          !!setup.yaml ||
+          ['crop', 'rotate', 'origin'].includes(setup.tool),
+      );
       setActiveLayer(setup.layer);
       setTool(setup.tool);
       previousTool.current = 'pen';
@@ -349,12 +362,59 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   });
+  const brushControls = (
+    <div className="brush-control">
+      <span
+        className="brush-preview"
+        role="img"
+        aria-label={`${t('size')} · ${size} px`}
+        title={`${t('size')} · ${size} px`}
+      >
+        <svg viewBox="0 0 48 28" aria-hidden="true">
+          <line
+            x1="12"
+            y1="14"
+            x2="36"
+            y2="14"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth={size <= 12 ? size : 12 + Math.log2(size / 12) * 2}
+          />
+        </svg>
+      </span>
+      <input
+        className="brush-slider"
+        type="range"
+        min={1}
+        max={512}
+        step={1}
+        aria-label={t('size')}
+        title={`${t('size')} · ${size} px`}
+        value={size}
+        onChange={(e) => setSize(Number(e.target.value))}
+      />
+      <input
+        className="brush-input"
+        type="number"
+        min={1}
+        max={512}
+        step={1}
+        aria-label={t('size')}
+        title={t('size')}
+        value={size}
+        onChange={(e) =>
+          setSize(Math.max(1, Math.min(512, Math.round(Number(e.target.value) || 1))))
+        }
+      />
+      <span className="unit">px</span>
+    </div>
+  );
   const world = position ? worldAt(position, displayDoc) : null;
   const hint =
     tool === 'line'
-      ? t('lineHint')
+      ? t(compact ? 'touchLineHint' : 'lineHint')
       : tool === 'polygon'
-        ? t('polygonHint')
+        ? t(compact ? 'touchPolygonHint' : 'polygonHint')
         : tool === 'crop'
           ? t('cropHint')
           : tool === 'rotate'
@@ -362,7 +422,7 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             : tool === 'origin'
               ? t('originHint')
               : tool === 'select'
-                ? t('selectHint')
+                ? t(compact ? 'touchSelectHint' : 'selectHint')
                 : '';
   return (
     <fieldset className="editor" disabled={disabled}>
@@ -406,18 +466,22 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
         ))}
       </aside>
       <aside className="tool-rail" aria-label="Tools">
-        {Object.entries(toolIcons).map(([key, Icon]) => (
-          <IconButton
-            key={key}
-            data-tour={`tool-${key}`}
-            title={t(key as keyof typeof toolIcons)}
-            active={tool === key}
-            disabled={disabled || (key === 'select' && layer === 'map')}
-            onClick={() => activate(key as Tool)}
-          >
-            <Icon size={19} />
-          </IconButton>
-        ))}
+        <div className="drawing-tools">
+          {Object.entries(toolIcons)
+            .filter(([key]) => !(compact && layer === 'map' && key === 'select'))
+            .map(([key, Icon]) => (
+              <IconButton
+                key={key}
+                data-tour={`tool-${key}`}
+                title={t(key as keyof typeof toolIcons)}
+                active={tool === key}
+                disabled={disabled || (key === 'select' && layer === 'map')}
+                onClick={() => activate(key as Tool)}
+              >
+                <Icon size={19} />
+              </IconButton>
+            ))}
+        </div>
         <div className="rail-divider" />
         <IconButton
           data-tour="undo"
@@ -463,16 +527,28 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
                 <>
                   <button
                     className={`small-button${clear ? '' : ' selected'}`}
+                    aria-label={t(layer)}
+                    title={t(layer)}
                     onClick={() => setClear(false)}
                   >
-                    {layer === 'keepout' ? t('keepout') : `${speed}%`}
+                    {layer === 'keepout' ? (
+                      compact ? (
+                        <Pencil size={18} />
+                      ) : (
+                        t('keepout')
+                      )
+                    ) : (
+                      `${speed}%`
+                    )}
                   </button>
                   <button
                     data-tour="mask-clear"
                     className={`text-button${clear ? ' selected' : ''}`}
+                    aria-label={t('clear')}
+                    title={t('clear')}
                     onClick={() => setClear(true)}
                   >
-                    {t('clear')}
+                    {compact ? <Eraser size={18} /> : t('clear')}
                   </button>
                 </>
               )}
@@ -488,52 +564,47 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
               >
                 <Pipette size={17} />
               </IconButton>
-              <div className="brush-control">
-                <span
-                  className="brush-preview"
-                  role="img"
-                  aria-label={`${t('size')} · ${size} px`}
-                  title={`${t('size')} · ${size} px`}
-                >
-                  <svg viewBox="0 0 48 28" aria-hidden="true">
-                    <line
-                      x1="12"
-                      y1="14"
-                      x2="36"
-                      y2="14"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeWidth={size <= 12 ? size : 12 + Math.log2(size / 12) * 2}
-                    />
-                  </svg>
-                </span>
-                <input
-                  className="brush-slider"
-                  type="range"
-                  min={1}
-                  max={512}
-                  step={1}
-                  aria-label={t('size')}
-                  title={`${t('size')} · ${size} px`}
-                  value={size}
-                  onChange={(e) => setSize(Number(e.target.value))}
-                />
-                <input
-                  className="brush-input"
-                  type="number"
-                  min={1}
-                  max={512}
-                  step={1}
-                  aria-label={t('size')}
-                  title={t('size')}
-                  value={size}
-                  onChange={(e) =>
-                    setSize(Math.max(1, Math.min(512, Math.round(Number(e.target.value) || 1))))
+              {compact ? (
+                <Popover
+                  className="brush-menu"
+                  label={t('size')}
+                  closeOnAction={false}
+                  trigger={
+                    <>
+                      <svg viewBox="0 0 40 24" aria-hidden="true">
+                        <line
+                          x1="10"
+                          y1="12"
+                          x2="30"
+                          y2="12"
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeWidth={Math.min(14, size)}
+                        />
+                      </svg>
+                      <span>
+                        {size}
+                        <small> px</small>
+                      </span>
+                    </>
                   }
-                />
-                <span className="unit">px</span>
-              </div>
+                >
+                  {brushControls}
+                </Popover>
+              ) : (
+                brushControls
+              )}
             </>
+          )}
+          {compact && draft && !panel && (
+            <div className="geometry-actions">
+              <IconButton title={t('apply')} onClick={() => void apply()}>
+                <Check size={19} />
+              </IconButton>
+              <IconButton title={t('cancel')} onClick={cancel}>
+                <X size={19} />
+              </IconButton>
+            </div>
           )}
           {points > 0 && (
             <div className="inline-actions">
@@ -594,9 +665,19 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
             onAngle={setAngle}
             onRect={setRect}
             onPoints={setPoints}
+            onLineStart={setLinePending}
             onZoom={setZoom}
             onPosition={setPosition}
           />
+          {linePending && (
+            <IconButton
+              className="icon-button canvas-cancel"
+              title={t('cancel')}
+              onClick={() => canvas.current?.cancel()}
+            >
+              <X size={19} />
+            </IconButton>
+          )}
           {hint && <div className="canvas-hint">{hint}</div>}
           <div className="zoom-control">
             <IconButton title="−" onClick={() => canvas.current?.zoom(0.8)}>
@@ -625,11 +706,18 @@ export const Editor = forwardRef<EditorHandle, Props>(function Editor(
       {panel && (
         <aside className="properties" aria-label={t('properties')}>
           <div className="panel-title">
-            {geometry
-              ? t(tool as 'crop' | 'rotate' | 'origin')
-              : layer !== 'map'
-                ? t(layer)
-                : t('properties')}
+            <span>
+              {geometry
+                ? t(tool as 'crop' | 'rotate' | 'origin')
+                : layer !== 'map'
+                  ? t(layer)
+                  : t('properties')}
+            </span>
+            {compact && (
+              <IconButton title={t('close')} onClick={() => setPanel(false)}>
+                <X size={20} />
+              </IconButton>
+            )}
           </div>
           {layer !== 'map' && (
             <section className="property-section" data-tour="mask-display">
